@@ -68,4 +68,13 @@ The arduino code issued a NMEA sentenced every 10 minutes on the USB serial port
 1. current wind direction (cardinal points)
 1. rain accumulation past 10 minutes (0.2mm precision)
 
+## Intersting links
+* [Wind reporting in the NAS](https://ral.ucar.edu/general/Summer2012/FPAW_2012_Summer_Presentations/Seg%204%20Surface%20Observations%20Riger%20Sultan/Armbruster%20Wind%20Reporting.pdf)
+* [LTE shield instructable](https://www.instructables.com/LTE-NB-IoT-Shield-for-Arduino/)
+* [LTE shield website](https://github.com/botletics/SIM7000-LTE-Shield)
+* [Artic Climate Evaluator](http://www2.ensc.sfu.ca/~whitmore/courses/ensc305/projects/2011/2desi.pdf) -- an example of a great specification
+* [Silicon Chip article on remote logging](https://www.siliconchip.com.au/Issue/2020/February/Remote+monitoring+station+messages+or+emails+by+4G%21)
+* [ALDI mobile network information](https://apn-australia.gishan.net/en/apn/aldi)
+* [Arduino C programming reference](https://www.arduino.cc/reference/en/)
+* [SHT1x Arduino Library](https://github.com/practicalarduino/SHT1x)
 
