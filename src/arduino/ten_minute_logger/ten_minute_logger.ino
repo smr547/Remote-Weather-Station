@@ -68,17 +68,17 @@ void loop()
   sprintf(buffer, "%s" , "$TRXDA,");
   /* output sentence contains  
    *  
-   *  $TRXDA
+   *  0 - $TRXDA
    *  
-   *  temp deg C
-   *  pressure Pascals
-   *  humidity (% to 2 decimal places)
-   *  temp deg C
-   *  temp deg F
-   *  dew point deg C
-   *  rainfall mm -- this period
-   *  wind speed knots
-   *  wind direction (cardinal point)
+   *  1 - temp deg C
+   *  2 - pressure Pascals
+   *  3 - humidity (% to 2 decimal places)
+   *  4 - temp deg C
+   *  5 - temp deg F
+   *  6 - dew point deg C
+   *  7 - rainfall mm -- this period
+   *  8 - wind speed knots
+   *  9 - wind direction (cardinal point)
    */
   sht.readSensor();
   Serial.print(buffer);
