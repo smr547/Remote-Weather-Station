@@ -1,0 +1,14 @@
+[Unit]
+Description=Post weather data to ThingSpeak
+After=network.target
+
+[Service]
+ExecStart=/home/smr/projects/Remote-Weather-Station/src/python/post_data.py
+WorkingDirectory=/home/smr/projects/Remote-Weather-Station/src/python
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=smr
+
+[Install]
+WantedBy=multi-user.target
