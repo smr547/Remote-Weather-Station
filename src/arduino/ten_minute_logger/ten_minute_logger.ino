@@ -16,6 +16,25 @@ Wire weather data as NMEA sentence
 #define windOffset 0;
 int windDirectionPin = A3;
 
+
+typedef struct observations {
+
+  float temp_085_degC;     // air temperature degrees C as reported by the BMP085 pressure sensor
+  int   pressure_Pa;       // barametric pressure in Pascals
+  float humidity_Pcent;    // relative humidity as a percentage
+  float temp_degC;         // temperature (degC) as reported by the SHT15
+  float temp_degF;         // temperature (degF) as reported by the SHT15
+  float dewpoint_degC;     // dew point (degC) as reported by the SHT15
+  float rainfall_mm;       // rainfall aggregated since last observation
+  float windSpeed_kts;     // windspeed in knots
+  int   windDirection_deg; // wind direction in degrees
+
+} 
+Observations;
+
+char * getNMEA(char * buff, Observations * obs);
+
+
 volatile unsigned long tips; // cup rotation counter used in interrupt routine
 volatile unsigned long contactBounceTime; // Timer to avoid contact bounce in interrupt routine
 volatile unsigned long rotations; // cup rotation counter used in interrupt routine
@@ -62,73 +81,25 @@ void setup()
 
 void loop()
 {
-  char buffer[8];
+  long sleep_ms = 600000L;
+  Observations obs;      // storage structure for weather observations
+
+    char buffer[8];
   // lets try to format an NMEA string (no checksum at this stage)
 
-  sprintf(buffer, "%s" , "$TRXDA,");
-  /* output sentence contains  
-   *  
-   *  0 - $TRXDA
-   *  
-   *  1 - temp deg C
-   *  2 - pressure Pascals
-   *  3 - humidity (% to 2 decimal places)
-   *  4 - temp deg C
-   *  5 - temp deg F
-   *  6 - dew point deg C
-   *  7 - rainfall mm -- this period
-   *  8 - wind speed knots
-   *  9 - wind direction (cardinal point)
-   */
-  sht.readSensor();
-  Serial.print(buffer);
-  Serial.print(bmp.readTemperature());
-  Serial.print(",");
-  Serial.print(bmp.readPressure()); 
-  Serial.print(",");
-  Serial.print(sht.getHumidity()); 
-  Serial.print(",");
-  Serial.print(sht.getTemperature_C()); 
-  Serial.print(",");
-  Serial.print(sht.getTemperature_F()); 
-  Serial.print(",");
-  Serial.print(sht.getDewPoint());
+  obs.temp_085_degC = bmp.readTemperature();
+  obs.pressure_Pa = bmp.readPressure();
+  obs.humidity_Pcent = sht.getHumidity();
+  obs.temp_degC   = sht.getTemperature_C();
+  obs.temp_degF = sht.getTemperature_F();
+  obs.dewpoint_degC = sht.getDewPoint();
+  obs.rainfall_mm = getRainfall_mm();
+  obs.windSpeed_kts = getWindspeed_kts();
+  obs.windDirection_deg = getWindDirection_deg();
 
-  // rain gauge
-  // convert tips to rainfall_mm using the formula R=T*0.18
-  cli(); // Disable interrupts
-  rainfall_mm = tips * 0.18;
-  tips = 0;
-  sei(); // Enables interrupts
-  Serial.print(",");
-  Serial.print(rainfall_mm);
-
-
-  // wind speed -- average over 10 minutes
-  // TODO: support gusts
-
-
-  // convert to knots using the formula V=P(2.25/T)*0.87
-  // V_kts = P * (2.25/600) * 0.87
-  // V_kts = P * 0.0032625
-  // 
-  cli(); // Disable interrupts -- prevents volitile variable changing during calcs
-
-  windSpeed_kts = rotations * 0.0032625;
-  rotations = 0;
-  sei(); // Enables interrupts
-  Serial.print(",");
-  Serial.print(windSpeed_kts);
-
-  // wind direction
-
-  Serial.print(",");
-  Serial.print(getWindDirection());
-
-  // sleep for 10 mins
-
-  Serial.print("\n");
-  delay(600000);
+ 
+  Serial.print(getNMEA(buffer, &obs));
+  delay(sleep_ms);
 }
 
 // This is the function that the interrupt calls to increment the tip count
@@ -151,7 +122,7 @@ void isr_rotation () {
 
 }
 
-int getWindDirection(void) {
+int getWindDirection_deg(void) {
   int vaneValue = analogRead(windDirectionPin);
   int direction = map(vaneValue, 0, 1023, 0, 360);
   direction = direction + windOffset;
@@ -159,6 +130,79 @@ int getWindDirection(void) {
   if (direction < 0) direction += 360;
   return direction;
 }
+
+float getRainfall_mm() {
+  // rainfall computed at 0.18mm per bucket tip
+  cli(); // Disable interrupts so volatile variable don't change under us
+  float rainfall_mm = tips * 0.18;
+  tips = 0; 
+  sei(); // Enables interrupts
+  return rainfall_mm;
+}
+
+float getWindspeed_kts(void) {
+
+  // wind speed -- average over 10 minutes
+  // TODO: support gusts
+
+
+  // convert to knots using the formula V=P(2.25/T)*0.87
+  // V_kts = P * (2.25/600) * 0.87
+  // V_kts = P * 0.0032625
+  // 
+  cli(); // Disable interrupts -- prevents volitile variable changing during calcs
+
+  float windSpeed_kts = rotations * 0.0032625;
+  rotations = 0;
+  sei(); // Enables interrupts
+  return windSpeed_kts;
+
+}
+
+char * getNMEA(char * buff, Observations * obs) {
+
+  /* output sentence contains  
+   *  
+   *  0 - $TRXDA
+   *  
+   *  1 - temp deg C
+   *  2 - pressure Pascals
+   *  3 - humidity (% to 2 decimal places)
+   *  4 - temp deg C
+   *  5 - temp deg F
+   *  6 - dew point deg C
+   *  7 - rainfall mm -- this period
+   *  8 - wind speed knots
+   *  9 - wind direction (cardinal point)
+   
+   
+   
+   float temp_085_degC;     // air temperature degrees C as reported by the BMP085 pressure sensor
+   int   pressure_Pa;       // barametric pressure in Pascals
+   float humidity_Pcent;    // relative humidity as a percentage
+   float temp_degC;         // temperature (degC) as reported by the SHT15
+   float temp_degF;         // temperature (degF) as reported by the SHT15
+   float dewpoint_degC;     // dew point (degC) as reported by the SHT15
+   float rainfall_mm;       // rainfall aggregated since last observation
+   float windSpeed_kts;     // windspeed in knots
+   int   windDirection_deg; // wind direction in degrees
+   
+   */
+  sprintf(buff, "$TRXDA,%f,%f,%f,%f,%f,%f,%f,%d\n", 
+  obs->temp_degC, 
+  obs->pressure_Pa/100.0,
+  obs->humidity_Pcent,
+  obs->temp_degC,
+  obs->temp_degF,
+  obs->dewpoint_degC,
+  obs->rainfall_mm,
+  obs->windSpeed_kts,
+  obs->windDirection_deg);
+
+  return buff;
+}
+
+
 
 
 
