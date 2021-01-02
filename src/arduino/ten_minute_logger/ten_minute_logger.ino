@@ -30,12 +30,16 @@
 
 // globals constants
 
+namespace {
+
 constexpr long sleep_ms = 600000L; // ten minutes between each observation
 
 // function declarations
 
 unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs);
 void isr_rotation(void);
+
+}  // namespace
 
 // class definitions
 
@@ -120,18 +124,18 @@ class WindMeter {
 
   private:
 
-    static const int windSpeedPin = 2;  //D2 pin is connected to the wind speed reed switch (one pulse per revolution)
-    static const int windInterrupt = 0; // D2 pulse causes interrupt 0
-    static const int windOffset = 0;    // anemometer is aligned North/South
-    static const int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
+    static constexpr int windSpeedPin = 2;  //D2 pin is connected to the wind speed reed switch (one pulse per revolution)
+    static constexpr int windInterrupt = 0; // D2 pulse causes interrupt 0
+    static constexpr int windOffset = 0;    // anemometer is aligned North/South
+    static constexpr int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
 
-  public:
     volatile unsigned int  rotations = 0;                      // number of rotations this period
     volatile unsigned long fastest_rot_msecs = 999999L;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
     volatile unsigned int  faster_count = 0;                   // increments when a faster rotation is measured
     volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds for last n fast rotations
     volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
 
+  public:
     void initialise(void) {
       pinMode(windSpeedPin, INPUT);
       attachInterrupt(windInterrupt, isr_rotation, FALLING);
