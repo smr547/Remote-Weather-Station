@@ -35,7 +35,6 @@ constexpr long sleep_ms = 600000L; // ten minutes between each observation
 // function declarations
 
 unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs);
-void isr_bucket_tip(void);
 void isr_rotation(void);
 
 // class definitions
@@ -70,12 +69,16 @@ class RainGauge {
     volatile unsigned long tips = 0L; // cup rotation counter used in interrupt routine
     volatile unsigned long lastInterrupt = 0L; // Timer to avoid contact bounce in interrupt routine
 
+    static void bucket_tip() {
+      instance()->serviceInterrupt();
+    }
+
     /**
        Initialse the hardware and interrupt vector table
     */
     void initialise(void) {
       pinMode(rainGaugePin, INPUT);
-      attachInterrupt(rainInterrupt, isr_bucket_tip, FALLING);
+      attachInterrupt(rainInterrupt, bucket_tip, FALLING);
     }
 
     /**
@@ -343,13 +346,6 @@ unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) 
     result = to_msecs - from_msecs;
   }
   return result;
-}
-
-/**
-   Interrupt service routine for the Rain Gauge bucket -- called at each tip of the bucket
-*/
-void isr_bucket_tip () {
-  rainGauge->serviceInterrupt();
 }
 
 /**
