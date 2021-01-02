@@ -219,7 +219,6 @@ class WindMeter {
 
       // reset the accumulators for the next period
       
-      aggregate_msecs = 0L;
       fastest_rot_msecs = 99999L;
       faster_count = 0;
       aggregate_msecs = 0L;
