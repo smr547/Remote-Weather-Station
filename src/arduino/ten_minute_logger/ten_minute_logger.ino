@@ -11,10 +11,12 @@
   TODO: Add comms capability to log data to ThingSpeak IoT data collection portal
 */
 
+#include <limits>
+#include <stdint.h>
+
 #include <Adafruit_BMP085.h>
 #include "cactus_io_SHT15.h"
 
-#define MAX_LONG 0xFFFFFFFF  // maximum value of a 32 bit unsigned integer
 #define SHT_DataPin 4        // data pin for SHT temperature/humidity sensor
 #define SHT_ClockPin 5       // clock pin for SHT temperature/humidity sensor
 
@@ -324,7 +326,7 @@ unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) 
 
   if (to_msecs < from_msecs) {
     // timer has wrapped around
-    result = MAX_LONG - from_msecs;
+    result = std::numeric_limits<uint32_t>::max() - from_msecs;
     result += to_msecs;
   } else {
     result = to_msecs - from_msecs;
