@@ -11,7 +11,7 @@
   TODO: Add comms capability to log data to ThingSpeak IoT data collection portal
 */
 
-#include <limits>
+#include <limits.h>
 #include <stdint.h>
 
 #include <Adafruit_BMP085.h>
@@ -30,8 +30,7 @@
 
 // globals constants
 
-const long sleep_ms = 600000L; // ten minutes between each observation
-
+constexpr long sleep_ms = 600000L; // ten minutes between each observation
 
 // function declarations
 
@@ -55,7 +54,19 @@ class RainGauge {
     static const int rainInterrupt = 1; // tip of the bucket causes this interrupt
     static const float bucket_capacity = 0.18;
 
+    // Private constructor, obtain a RainGauge using RainGauge::instance().
+    RainGauge() {}
+
   public:
+
+    static RainGauge* instance() {
+      static RainGauge* inst = new RainGauge;
+      return inst;
+    }
+
+    // Doesn't make sense to copy RainGauges.
+    RainGauge(const RainGauge& other) = delete;
+
     volatile unsigned long tips = 0L; // cup rotation counter used in interrupt routine
     volatile unsigned long lastInterrupt = 0L; // Timer to avoid contact bounce in interrupt routine
 
@@ -234,7 +245,7 @@ class Observations {
     /**
        Read the sensors and record the results
     */
-    void makeObservations(RainGauge rainGauge, WindMeter windMeter, SHT15 sht, Adafruit_BMP085 bmp ) {
+    void makeObservations(RainGauge* rainGauge, WindMeter windMeter, SHT15 sht, Adafruit_BMP085 bmp ) {
 
       temp_085_degC = bmp.readTemperature();
       pressure_Pa = bmp.readPressure();
@@ -242,7 +253,7 @@ class Observations {
       temp_degC   = sht.getTemperature_C();
       temp_degF = sht.getTemperature_F();
       dewpoint_degC = sht.getDewPoint();
-      rainfall_mm = rainGauge.getRainfall_mm();
+      rainfall_mm = rainGauge->getRainfall_mm();
       windSpeed_kts = windMeter.getWindspeed_kts();
       windDirection_deg = windMeter.getWindDirection_deg();
       windGust_kts = windMeter.getGustSpeed_kts();
@@ -286,7 +297,7 @@ class Observations {
 
 SHT15 sht = SHT15(SHT_DataPin, SHT_ClockPin);
 WindMeter windMeter;
-RainGauge rainGauge;
+RainGauge* rainGauge = RainGauge::instance();
 Observations obs;
 Adafruit_BMP085 bmp;
 
@@ -300,7 +311,7 @@ void setup() {
     while (1) {}
   }
 
-  rainGauge.initialise();
+  rainGauge->initialise();
   windMeter.initialise();
 }
 
@@ -326,7 +337,7 @@ unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) 
 
   if (to_msecs < from_msecs) {
     // timer has wrapped around
-    result = std::numeric_limits<uint32_t>::max() - from_msecs;
+    result = ULONG_MAX - from_msecs;
     result += to_msecs;
   } else {
     result = to_msecs - from_msecs;
@@ -338,7 +349,7 @@ unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) 
    Interrupt service routine for the Rain Gauge bucket -- called at each tip of the bucket
 */
 void isr_bucket_tip () {
-  rainGauge.serviceInterrupt();
+  rainGauge->serviceInterrupt();
 }
 
 /**
