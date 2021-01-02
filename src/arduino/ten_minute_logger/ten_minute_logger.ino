@@ -279,8 +279,8 @@ class Observations {
          10 - wind gust (knots) for this period (sustained for 10 revs of anemometer)
 
     */
-    char * getNMEA(char * buff) {
-      sprintf(buff, "$TRXDA,%f,%f,%f,%f,%f,%f,%f,%d,%f",
+    char * getNMEA(char * buff, int n) {
+      snprintf(buff, n, "$TRXDA,%f,%f,%f,%f,%f,%f,%f,%d,%f",
               temp_degC,
               pressure_Pa / 100.0,
               humidity_Pcent,
@@ -326,7 +326,7 @@ void loop() {
 
   delay(sleep_ms);
   obs.makeObservations(rainGauge, windMeter, sht, bmp);
-  Serial.print(obs.getNMEA(buffer));
+  Serial.print(obs.getNMEA(buffer, sizeof(buffer)));
 }
 
 // global functions
