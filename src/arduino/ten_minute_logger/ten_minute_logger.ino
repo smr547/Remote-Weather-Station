@@ -95,20 +95,25 @@ class RainGauge {
     }
 };
 
+/**
+   Class WindMeter represents the Davis Anemometer connected to the weather station.
+
+   For hardware details see: https://www.davisinstruments.com.au/product-page/6410-anemometer-for-vantage-pro
+*/
 class WindMeter {
 
   private:
 
     static const int windSpeedPin = 2;  //D2 pin is connected to the wind speed reed switch (one pulse per revolution)
-    static const int windInterrupt = 0;
-    static const int windOffset = 0;
-    static const int windDirectionPin = A3;
+    static const int windInterrupt = 0; // D2 pulse causes interrupt 0
+    static const int windOffset = 0;    // anemometer is aligned North/South
+    static const int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
 
   public:
     volatile unsigned int  rotations = 0;                      // number of rotations this period
     volatile unsigned long fastest_rot_msecs = 999999L;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
     volatile unsigned int  faster_count = 0;                   // increments when a faster rotation is measured
-    volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds
+    volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds for last n fast rotations
     volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
 
     void initialise(void) {
@@ -117,6 +122,9 @@ class WindMeter {
     }
 
 
+    /**
+       Service the interrupt caused by a single rotation of the anemometer
+    */
     void serviceInterrupt(void) {
 
       unsigned long now;
@@ -125,21 +133,30 @@ class WindMeter {
       now = millis();
       period_msecs = getPeriod_msecs(last_interrupt_msecs, now);
       if (period_msecs > 15 ) { // debounce the switch contact.
-        rotations++;
+        rotations++;     // accumulate the number of rotations so we can compute average speed over integration period
         last_interrupt_msecs = now;
 
+        // record data so we can compute maximum wind gust during integration period
+
         if (period_msecs < fastest_rot_msecs) {
-          faster_count++;
-          aggregate_msecs += period_msecs;
+          faster_count++;                // this rotation beat past record
+          aggregate_msecs += period_msecs; // sum the number of milliseconds over 10 rotations
           if (faster_count == 10) {
-            fastest_rot_msecs = aggregate_msecs / 10;
+            fastest_rot_msecs = aggregate_msecs / 10; // previous record exceeded by 10 consecutive rotations
             faster_count = 0;
             aggregate_msecs = 0L;
           }
-          last_interrupt_msecs = now;
+        } else { // didn't beat the record so zero the gust accumulators
+          faster_count = 0L;
+          aggregate_msecs = 0L;
         }
       }
     }
+
+    /**
+     * Compute the wind direction by reading potentiometer voltage
+     * and convertion to degrees true
+     */
 
     int getWindDirection_deg(void) {
       int vaneValue = analogRead(windDirectionPin);
@@ -150,19 +167,17 @@ class WindMeter {
       return direction;
     }
 
-
+    /**
+     * Compute and return the average wind speed in knots
+     */
     float getWindspeed_kts(void) {
 
       // wind speed -- average over 10 minutes
-      // TODO: support gusts
-
-
       // convert to knots using the formula V=P(2.25/T)*0.87
       // V_kts = P * (2.25/600) * 0.87
       // V_kts = P * 0.0032625
       //
       cli(); // Disable interrupts -- prevents volitile variable changing during calcs
-
       float windSpeed_kts = rotations * 0.0032625;
       rotations = 0;
       sei(); // Enables interrupts
@@ -170,6 +185,9 @@ class WindMeter {
 
     }
 
+    /**
+     * Compute and return the maximum wind gust speed over the integration period
+     */
     float getGustSpeed_kts(void) {
 
       // v_kts = p * 1.9575 / t_sec
@@ -178,8 +196,10 @@ class WindMeter {
 
       cli();
       float gust = 19575.0 / aggregate_msecs;
-      aggregate_msecs = 0L;
 
+      // reset the accumulators for the next period
+      
+      aggregate_msecs = 0L;
       fastest_rot_msecs = 99999L;
       faster_count = 0;
       aggregate_msecs = 0L;
