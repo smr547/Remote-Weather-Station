@@ -36,10 +36,10 @@ constexpr long sleep_ms = 600000L; // ten minutes between each observation
 
 // function declarations
 
+}  // namespace
+
 unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs);
 void isr_rotation(void);
-
-}  // namespace
 
 // class definitions
 
@@ -57,11 +57,18 @@ class RainGauge {
     static const int rainInterrupt = 1; // tip of the bucket causes this interrupt
     static const float bucket_capacity = 0.18;
 
+    volatile unsigned long tips = 0L; // cup rotation counter used in interrupt routine
+    volatile unsigned long lastInterrupt = 0L; // Timer to avoid contact bounce in interrupt routine
+
     // Private constructor, obtain a RainGauge using RainGauge::instance().
-    RainGauge() {}
+    RainGauge() {
+      pinMode(rainGaugePin, INPUT);
+      attachInterrupt(rainInterrupt, []() {
+        instance()->serviceInterrupt();
+      }, FALLING);
+    }
 
   public:
-
     static RainGauge* instance() {
       static RainGauge* inst = new RainGauge;
       return inst;
@@ -69,21 +76,6 @@ class RainGauge {
 
     // Doesn't make sense to copy RainGauges.
     RainGauge(const RainGauge& other) = delete;
-
-    volatile unsigned long tips = 0L; // cup rotation counter used in interrupt routine
-    volatile unsigned long lastInterrupt = 0L; // Timer to avoid contact bounce in interrupt routine
-
-    static void bucket_tip() {
-      instance()->serviceInterrupt();
-    }
-
-    /**
-       Initialse the hardware and interrupt vector table
-    */
-    void initialise(void) {
-      pinMode(rainGaugePin, INPUT);
-      attachInterrupt(rainInterrupt, bucket_tip, FALLING);
-    }
 
     /**
        Return the total rainfall during the integration period and reset
@@ -174,9 +166,9 @@ class WindMeter {
     }
 
     /**
-     * Compute the wind direction by reading potentiometer voltage
-     * and convertion to degrees true
-     */
+       Compute the wind direction by reading potentiometer voltage
+       and convertion to degrees true
+    */
 
     int getWindDirection_deg(void) {
       int vaneValue = analogRead(windDirectionPin);
@@ -188,8 +180,8 @@ class WindMeter {
     }
 
     /**
-     * Compute and return the average wind speed in knots
-     */
+       Compute and return the average wind speed in knots
+    */
     float getWindspeed_kts(void) {
 
       // wind speed -- average over 10 minutes
@@ -206,8 +198,8 @@ class WindMeter {
     }
 
     /**
-     * Compute and return the maximum wind gust speed over the integration period
-     */
+       Compute and return the maximum wind gust speed over the integration period
+    */
     float getGustSpeed_kts(void) {
 
       // v_kts = p * 1.9575 / t_sec
@@ -218,7 +210,7 @@ class WindMeter {
       float gust = 19575.0 / aggregate_msecs;
 
       // reset the accumulators for the next period
-      
+
       fastest_rot_msecs = 99999L;
       faster_count = 0;
       aggregate_msecs = 0L;
@@ -284,16 +276,16 @@ class Observations {
     */
     char * getNMEA(char * buff, int n) {
       snprintf(buff, n, "$TRXDA,%f,%f,%f,%f,%f,%f,%f,%d,%f",
-              temp_degC,
-              pressure_Pa / 100.0,
-              humidity_Pcent,
-              temp_degC,
-              temp_degF,
-              dewpoint_degC,
-              rainfall_mm,
-              windSpeed_kts,
-              windDirection_deg,
-              windGust_kts);
+               temp_degC,
+               pressure_Pa / 100.0,
+               humidity_Pcent,
+               temp_degC,
+               temp_degF,
+               dewpoint_degC,
+               rainfall_mm,
+               windSpeed_kts,
+               windDirection_deg,
+               windGust_kts);
 
       return buff;
     }
@@ -317,7 +309,7 @@ void setup() {
     while (1) {}
   }
 
-  rainGauge->initialise();
+  // rainGauge->initialise();
   windMeter.initialise();
 }
 
