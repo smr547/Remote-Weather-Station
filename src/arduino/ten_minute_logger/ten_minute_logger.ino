@@ -31,15 +31,27 @@
 // globals constants
 
 namespace {
-
 constexpr long sleep_ms = 600000L; // ten minutes between each observation
-
-// function declarations
-
 }  // namespace
 
-unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs);
-void isr_rotation(void);
+// global functions
+
+/*
+   Compute the number of milliseconds between the supplied from and to times
+   noting that the time may have overflowed and wrapped to zero
+*/
+unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) {
+  unsigned long result = 0;
+
+  if (to_msecs < from_msecs) {
+    // timer has wrapped around
+    result = ULONG_MAX - from_msecs;
+    result += to_msecs;
+  } else {
+    result = to_msecs - from_msecs;
+  }
+  return result;
+}
 
 // class definitions
 
@@ -67,7 +79,7 @@ class RainGauge {
         instance()->serviceInterrupt();
       }, FALLING);
     }
-      
+
     /**
        Service a bucket-tip interrupt
     */
@@ -127,12 +139,13 @@ class WindMeter {
     volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds for last n fast rotations
     volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
 
-  public:
-    void initialise(void) {
+    // Private constructor, obtain a RainGauge using RainGauge::instance().
+    WindMeter() {
       pinMode(windSpeedPin, INPUT);
-      attachInterrupt(windInterrupt, isr_rotation, FALLING);
+      attachInterrupt(windInterrupt, []() {
+        instance()->serviceInterrupt();
+      }, FALLING);
     }
-
 
     /**
        Service the interrupt caused by a single rotation of the anemometer
@@ -165,6 +178,15 @@ class WindMeter {
       }
     }
 
+  public:
+
+    static WindMeter* instance() {
+      static WindMeter* inst = new WindMeter;
+      return inst;
+    }
+
+    // Doesn't make sense to copy RainGauges.
+    WindMeter(const WindMeter& other) = delete;
     /**
        Compute the wind direction by reading potentiometer voltage
        and convertion to degrees true
@@ -243,7 +265,7 @@ class Observations {
     /**
        Read the sensors and record the results
     */
-    void makeObservations(RainGauge* rainGauge, WindMeter windMeter, SHT15 sht, Adafruit_BMP085 bmp ) {
+    void makeObservations(RainGauge* rainGauge, WindMeter* windMeter, SHT15 sht, Adafruit_BMP085 bmp ) {
 
       temp_085_degC = bmp.readTemperature();
       pressure_Pa = bmp.readPressure();
@@ -252,9 +274,9 @@ class Observations {
       temp_degF = sht.getTemperature_F();
       dewpoint_degC = sht.getDewPoint();
       rainfall_mm = rainGauge->getRainfall_mm();
-      windSpeed_kts = windMeter.getWindspeed_kts();
-      windDirection_deg = windMeter.getWindDirection_deg();
-      windGust_kts = windMeter.getGustSpeed_kts();
+      windSpeed_kts = windMeter->getWindspeed_kts();
+      windDirection_deg = windMeter->getWindDirection_deg();
+      windGust_kts = windMeter->getGustSpeed_kts();
     }
 
     /**
@@ -294,7 +316,7 @@ class Observations {
 // global variable
 
 SHT15 sht = SHT15(SHT_DataPin, SHT_ClockPin);
-WindMeter windMeter;
+WindMeter* windMeter = WindMeter::instance();
 RainGauge* rainGauge = RainGauge::instance();
 Observations obs;
 Adafruit_BMP085 bmp;
@@ -308,9 +330,6 @@ void setup() {
     Serial.println("Could not find a BMP085 sensor!");
     while (1) {}
   }
-
-  // rainGauge->initialise();
-  windMeter.initialise();
 }
 
 /**
@@ -321,31 +340,5 @@ void loop() {
 
   delay(sleep_ms);
   obs.makeObservations(rainGauge, windMeter, sht, bmp);
-  Serial.print(obs.getNMEA(buffer, sizeof(buffer)));
-}
-
-// global functions
-
-/*
-   Compute the number of milliseconds between the supplied from and to times
-   noting that the time may have overflowed and wrapped to zero
-*/
-unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) {
-  unsigned long result = 0;
-
-  if (to_msecs < from_msecs) {
-    // timer has wrapped around
-    result = ULONG_MAX - from_msecs;
-    result += to_msecs;
-  } else {
-    result = to_msecs - from_msecs;
-  }
-  return result;
-}
-
-/**
-   Interrupt service routine for the anemometer -- called at each rotation of the anemometer
-*/
-void isr_rotation () {
-  windMeter.serviceInterrupt();
+  Serial.println(obs.getNMEA(buffer, sizeof(buffer)));
 }
