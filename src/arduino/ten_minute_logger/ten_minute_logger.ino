@@ -120,11 +120,11 @@ class RainGauge {
 };
 
 /**
-   Class WindMeter represents the Davis Anemometer connected to the weather station.
+   Class Anemometer represents the Davis Anemometer connected to the weather station.
 
    For hardware details see: https://www.davisinstruments.com.au/product-page/6410-anemometer-for-vantage-pro
 */
-class WindMeter {
+class Anemometer {
 
   private:
 
@@ -140,7 +140,7 @@ class WindMeter {
     volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
 
     // Private constructor, obtain a RainGauge using RainGauge::instance().
-    WindMeter() {
+    Anemometer() {
       pinMode(windSpeedPin, INPUT);
       attachInterrupt(windInterrupt, []() {
         instance()->serviceInterrupt();
@@ -180,13 +180,13 @@ class WindMeter {
 
   public:
 
-    static WindMeter* instance() {
-      static WindMeter* inst = new WindMeter;
+    static Anemometer* instance() {
+      static Anemometer* inst = new Anemometer;
       return inst;
     }
 
     // Doesn't make sense to copy RainGauges.
-    WindMeter(const WindMeter& other) = delete;
+    Anemometer(const Anemometer& other) = delete;
     /**
        Compute the wind direction by reading potentiometer voltage
        and convertion to degrees true
@@ -265,7 +265,7 @@ class Observations {
     /**
        Read the sensors and record the results
     */
-    void makeObservations(RainGauge* rainGauge, WindMeter* windMeter, SHT15 sht, Adafruit_BMP085 bmp ) {
+    void makeObservations(RainGauge* rainGauge, Anemometer* anemometer, SHT15 sht, Adafruit_BMP085 bmp ) {
 
       temp_085_degC = bmp.readTemperature();
       pressure_Pa = bmp.readPressure();
@@ -274,9 +274,9 @@ class Observations {
       temp_degF = sht.getTemperature_F();
       dewpoint_degC = sht.getDewPoint();
       rainfall_mm = rainGauge->getRainfall_mm();
-      windSpeed_kts = windMeter->getWindspeed_kts();
-      windDirection_deg = windMeter->getWindDirection_deg();
-      windGust_kts = windMeter->getGustSpeed_kts();
+      windSpeed_kts = anemometer->getWindspeed_kts();
+      windDirection_deg = anemometer->getWindDirection_deg();
+      windGust_kts = anemometer->getGustSpeed_kts();
     }
 
     /**
@@ -316,7 +316,7 @@ class Observations {
 // global variable
 
 SHT15 sht = SHT15(SHT_DataPin, SHT_ClockPin);
-WindMeter* windMeter = WindMeter::instance();
+Anemometer* anemometer = Anemometer::instance();
 RainGauge* rainGauge = RainGauge::instance();
 Observations obs;
 Adafruit_BMP085 bmp;
@@ -339,6 +339,6 @@ void loop() {
   char buffer[80];         // String buffer for NMEA sentences
 
   delay(sleep_ms);
-  obs.makeObservations(rainGauge, windMeter, sht, bmp);
+  obs.makeObservations(rainGauge, anemometer, sht, bmp);
   Serial.println(obs.getNMEA(buffer, sizeof(buffer)));
 }
