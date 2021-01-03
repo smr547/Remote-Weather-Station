@@ -67,6 +67,22 @@ class RainGauge {
         instance()->serviceInterrupt();
       }, FALLING);
     }
+      
+    /**
+       Service a bucket-tip interrupt
+    */
+    void serviceInterrupt(void) {
+      unsigned long now;
+      unsigned long period_msecs;
+
+      now = millis();
+      period_msecs = getPeriod_msecs(lastInterrupt, now);
+
+      if (period_msecs > 15 ) { // debounce the switch contact.
+        tips++;
+        lastInterrupt = now;
+      }
+    }
 
   public:
     static RainGauge* instance() {
@@ -88,22 +104,6 @@ class RainGauge {
       tips = 0;
       sei(); // Enables interrupts
       return rainfall_mm;
-    }
-
-    /**
-       Service a bucket-tip interrupt
-    */
-    void serviceInterrupt(void) {
-      unsigned long now;
-      unsigned long period_msecs;
-
-      now = millis();
-      period_msecs = getPeriod_msecs(lastInterrupt, now);
-
-      if (period_msecs > 15 ) { // debounce the switch contact.
-        tips++;
-        lastInterrupt = now;
-      }
     }
 };
 
