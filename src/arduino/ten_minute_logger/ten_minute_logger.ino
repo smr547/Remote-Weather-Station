@@ -11,10 +11,12 @@
   TODO: Add comms capability to log data to ThingSpeak IoT data collection portal
 */
 
-#include <Adafruit_BMP085.h>
-#include "cactus_io_SHT15.h"
+#include <limits.h>
+#include <stdint.h>
 
-#define MAX_LONG 0xFFFFFFFF  // maximum value of a 32 bit unsigned integer
+#include <Adafruit_BMP085.h>
+#include <SHT1x.h>
+
 #define SHT_DataPin 4        // data pin for SHT temperature/humidity sensor
 #define SHT_ClockPin 5       // clock pin for SHT temperature/humidity sensor
 
@@ -28,14 +30,29 @@
 
 // globals constants
 
-const long sleep_ms = 600000L; // ten minutes between each observation
+namespace {
+constexpr long sleep_ms = 600000L; // ten minutes between each observation
+constexpr int debounce_ms = 3;     // time window within which consecutive interrupts are ignored
+}  // namespace
 
+// global functions
 
-// function declarations
+/*
+   Compute the number of milliseconds between the supplied from and to times
+   noting that the time may have overflowed and wrapped to zero
+*/
+unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) {
+  unsigned long result = 0;
 
-unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs);
-void isr_bucket_tip(void);
-void isr_rotation(void);
+  if (to_msecs < from_msecs) {
+    // timer has wrapped around
+    result = ULONG_MAX - from_msecs;
+    result += to_msecs;
+  } else {
+    result = to_msecs - from_msecs;
+  }
+  return result;
+}
 
 // class definitions
 
@@ -53,17 +70,41 @@ class RainGauge {
     static const int rainInterrupt = 1; // tip of the bucket causes this interrupt
     static const float bucket_capacity = 0.18;
 
-  public:
     volatile unsigned long tips = 0L; // cup rotation counter used in interrupt routine
     volatile unsigned long lastInterrupt = 0L; // Timer to avoid contact bounce in interrupt routine
 
-    /**
-       Initialse the hardware and interrupt vector table
-    */
-    void initialise(void) {
+    // Private constructor, obtain a RainGauge using RainGauge::instance().
+    RainGauge() {
       pinMode(rainGaugePin, INPUT);
-      attachInterrupt(rainInterrupt, isr_bucket_tip, FALLING);
+      attachInterrupt(rainInterrupt, []() {
+        instance()->serviceInterrupt();
+      }, FALLING);
     }
+
+    /**
+       Service a bucket-tip interrupt
+    */
+    void serviceInterrupt(void) {
+      unsigned long now;
+      unsigned long period_msecs;
+
+      now = millis();
+      period_msecs = getPeriod_msecs(lastInterrupt, now);
+
+      if (period_msecs > debounce_ms ) { // debounce the switch contact.
+        tips++;
+        lastInterrupt = now;
+      }
+    }
+
+  public:
+    static RainGauge* instance() {
+      static RainGauge* inst = new RainGauge;
+      return inst;
+    }
+
+    // Doesn't make sense to copy RainGauges.
+    RainGauge(const RainGauge& other) = delete;
 
     /**
        Return the total rainfall during the integration period and reset
@@ -77,50 +118,35 @@ class RainGauge {
       sei(); // Enables interrupts
       return rainfall_mm;
     }
-
-    /**
-       Service a bucket-tip interrupt
-    */
-    void serviceInterrupt(void) {
-      unsigned long now;
-      unsigned long period_msecs;
-
-      now = millis();
-      period_msecs = getPeriod_msecs(lastInterrupt, now);
-
-      if (period_msecs > 15 ) { // debounce the switch contact.
-        tips++;
-        lastInterrupt = now;
-      }
-    }
 };
 
 /**
-   Class WindMeter represents the Davis Anemometer connected to the weather station.
+   Class Anemometer represents the Davis Anemometer connected to the weather station.
 
    For hardware details see: https://www.davisinstruments.com.au/product-page/6410-anemometer-for-vantage-pro
 */
-class WindMeter {
+class Anemometer {
 
   private:
 
-    static const int windSpeedPin = 2;  //D2 pin is connected to the wind speed reed switch (one pulse per revolution)
-    static const int windInterrupt = 0; // D2 pulse causes interrupt 0
-    static const int windOffset = 0;    // anemometer is aligned North/South
-    static const int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
+    static constexpr int windSpeedPin = 2;  //D2 pin is connected to the wind speed reed switch (one pulse per revolution)
+    static constexpr int windInterrupt = 0; // D2 pulse causes interrupt 0
+    static constexpr int windOffset = 0;    // anemometer is aligned North/South
+    static constexpr int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
 
-  public:
     volatile unsigned int  rotations = 0;                      // number of rotations this period
-    volatile unsigned long fastest_rot_msecs = 999999L;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
+    volatile unsigned long fastest_rot_msecs = ULONG_MAX;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
     volatile unsigned int  faster_count = 0;                   // increments when a faster rotation is measured
     volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds for last n fast rotations
     volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
 
-    void initialise(void) {
+    // Private constructor, obtain a RainGauge using RainGauge::instance().
+    Anemometer() {
       pinMode(windSpeedPin, INPUT);
-      attachInterrupt(windInterrupt, isr_rotation, FALLING);
+      attachInterrupt(windInterrupt, []() {
+        instance()->serviceInterrupt();
+      }, FALLING);
     }
-
 
     /**
        Service the interrupt caused by a single rotation of the anemometer
@@ -132,7 +158,7 @@ class WindMeter {
 
       now = millis();
       period_msecs = getPeriod_msecs(last_interrupt_msecs, now);
-      if (period_msecs > 15 ) { // debounce the switch contact.
+      if (period_msecs > debounce_ms ) { // debounce the switch contact.
         rotations++;     // accumulate the number of rotations so we can compute average speed over integration period
         last_interrupt_msecs = now;
 
@@ -141,8 +167,8 @@ class WindMeter {
         if (period_msecs < fastest_rot_msecs) {
           faster_count++;                // this rotation beat past record
           aggregate_msecs += period_msecs; // sum the number of milliseconds over 10 rotations
-          if (faster_count == 10) {
-            fastest_rot_msecs = aggregate_msecs / 10; // previous record exceeded by 10 consecutive rotations
+          if (faster_count >= 10) {
+            fastest_rot_msecs = aggregate_msecs / faster_count; // previous record exceeded by 10 consecutive rotations
             faster_count = 0;
             aggregate_msecs = 0L;
           }
@@ -153,10 +179,19 @@ class WindMeter {
       }
     }
 
+  public:
+
+    static Anemometer* instance() {
+      static Anemometer* inst = new Anemometer;
+      return inst;
+    }
+
+    // Doesn't make sense to copy RainGauges.
+    Anemometer(const Anemometer& other) = delete;
     /**
-     * Compute the wind direction by reading potentiometer voltage
-     * and convertion to degrees true
-     */
+       Compute the wind direction by reading potentiometer voltage
+       and convertion to degrees true
+    */
 
     int getWindDirection_deg(void) {
       int vaneValue = analogRead(windDirectionPin);
@@ -168,8 +203,8 @@ class WindMeter {
     }
 
     /**
-     * Compute and return the average wind speed in knots
-     */
+       Compute and return the average wind speed in knots
+    */
     float getWindspeed_kts(void) {
 
       // wind speed -- average over 10 minutes
@@ -186,28 +221,41 @@ class WindMeter {
     }
 
     /**
-     * Compute and return the maximum wind gust speed over the integration period
-     */
+       Compute and return the maximum wind gust speed over the integration period
+    */
     float getGustSpeed_kts(void) {
 
       // v_kts = p * 1.9575 / t_sec
       // here p = 10 and t_sec = aggregate_msecs / 1000.0
       // therefor v_kts = 19575 / aggregate_msecs
 
+      float gust = 0.0;
+
       cli();
-      float gust = 19575.0 / aggregate_msecs;
+      if (fastest_rot_msecs != ULONG_MAX) {
+        gust = 1955.0 / fastest_rot_msecs;
+      }
 
       // reset the accumulators for the next period
-      
-      aggregate_msecs = 0L;
-      fastest_rot_msecs = 99999L;
+
+      fastest_rot_msecs = ULONG_MAX;
       faster_count = 0;
       aggregate_msecs = 0L;
       sei();
 
       return gust;
     }
+    /*
+        String getDebugString(void) {
+          String comma = ", ";
+          String s = String(fastest_rot_msecs) + comma +
+                     String(faster_count) + comma +
+                     String(aggregate_msecs) + comma +
+                     String(last_interrupt_msecs);
 
+          return s;
+        }
+    */
 };
 
 /***
@@ -216,9 +264,9 @@ class WindMeter {
    Represents all the observations that are made by the weather station within a fixed period of time
 */
 class Observations {
-  public:
+  private:
     float temp_085_degC;     // air temperature degrees C as reported by the BMP085 pressure sensor
-    int   pressure_Pa;       // barametric pressure in Pascals
+    int32_t   pressure_Pa;   // barametric pressure in Pascals
     float humidity_Pcent;    // relative humidity as a percentage
     float temp_degC;         // temperature (degC) as reported by the SHT15
     float temp_degF;         // temperature (degF) as reported by the SHT15
@@ -229,21 +277,29 @@ class Observations {
     float windGust_kts;      // wind gust ths period (sustained for 10 revs of anemometer)
 
 
+    float calcDewPoint() {
+      float k;
+      k = log(humidity_Pcent / 100) + (17.62 * temp_degC) / (243.12 + temp_degC);
+      return 243.12 * k / (17.62 - k);
+    }
+
+
+  public:
     /**
        Read the sensors and record the results
     */
-    void makeObservations(RainGauge rainGauge, WindMeter windMeter, SHT15 sht, Adafruit_BMP085 bmp ) {
+    void makeObservations(RainGauge* rainGauge, Anemometer* anemometer, SHT1x sht, Adafruit_BMP085 bmp ) {
 
       temp_085_degC = bmp.readTemperature();
       pressure_Pa = bmp.readPressure();
-      humidity_Pcent = sht.getHumidity();
-      temp_degC   = sht.getTemperature_C();
-      temp_degF = sht.getTemperature_F();
-      dewpoint_degC = sht.getDewPoint();
-      rainfall_mm = rainGauge.getRainfall_mm();
-      windSpeed_kts = windMeter.getWindspeed_kts();
-      windDirection_deg = windMeter.getWindDirection_deg();
-      windGust_kts = windMeter.getGustSpeed_kts();
+      humidity_Pcent = sht.readHumidity();
+      temp_degC   = sht.readTemperatureC();
+      temp_degF = sht.readTemperatureF();
+      dewpoint_degC = calcDewPoint();
+      rainfall_mm = rainGauge->getRainfall_mm();
+      windSpeed_kts = anemometer->getWindspeed_kts();
+      windDirection_deg = anemometer->getWindDirection_deg();
+      windGust_kts = anemometer->getGustSpeed_kts();
     }
 
     /**
@@ -263,28 +319,29 @@ class Observations {
          10 - wind gust (knots) for this period (sustained for 10 revs of anemometer)
 
     */
-    char * getNMEA(char * buff) {
-      sprintf(buff, "$TRXDA,%f,%f,%f,%f,%f,%f,%f,%d,%f",
-              temp_degC,
-              pressure_Pa / 100.0,
-              humidity_Pcent,
-              temp_degC,
-              temp_degF,
-              dewpoint_degC,
-              rainfall_mm,
-              windSpeed_kts,
-              windDirection_deg,
-              windGust_kts);
+    String getNMEA() {
+      String comma = ",";
+      String s = "$TRXDA" + comma
+                 + temp_degC + comma
+                 + pressure_Pa + comma
+                 + humidity_Pcent + comma
+                 + temp_degC + comma
+                 + temp_degF + comma
+                 + dewpoint_degC + comma
+                 + rainfall_mm + comma
+                 + windSpeed_kts + comma
+                 + windDirection_deg + comma
+                 + windGust_kts;
 
-      return buff;
+      return s;
     }
 };
 
 // global variable
 
-SHT15 sht = SHT15(SHT_DataPin, SHT_ClockPin);
-WindMeter windMeter;
-RainGauge rainGauge;
+SHT1x sht = SHT1x(SHT_DataPin, SHT_ClockPin);
+Anemometer* anemometer = Anemometer::instance();
+RainGauge* rainGauge = RainGauge::instance();
 Observations obs;
 Adafruit_BMP085 bmp;
 
@@ -297,51 +354,24 @@ void setup() {
     Serial.println("Could not find a BMP085 sensor!");
     while (1) {}
   }
-
-  rainGauge.initialise();
-  windMeter.initialise();
 }
 
 /**
    Main program loop -- called continuously
 */
 void loop() {
-  char buffer[80];         // String buffer for NMEA sentences
-
+  /*
+    // delay(sleep_ms);
+    int i = 0;
+    while (1) {
+    delay(5000);
+    Serial.println(anemometer->getDebugString());
+    i++;
+    if (i >= 200)
+      break;
+    }
+  */
   delay(sleep_ms);
-  obs.makeObservations(rainGauge, windMeter, sht, bmp);
-  Serial.print(obs.getNMEA(buffer));
-}
-
-// global functions
-
-/*
-   Compute the number of milliseconds between the supplied from and to times
-   noting that the time may have overflowed and wrapped to zero
-*/
-unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) {
-  unsigned long result = 0;
-
-  if (to_msecs < from_msecs) {
-    // timer has wrapped around
-    result = MAX_LONG - from_msecs;
-    result += to_msecs;
-  } else {
-    result = to_msecs - from_msecs;
-  }
-  return result;
-}
-
-/**
-   Interrupt service routine for the Rain Gauge bucket -- called at each tip of the bucket
-*/
-void isr_bucket_tip () {
-  rainGauge.serviceInterrupt();
-}
-
-/**
-   Interrupt service routine for the anemometer -- called at each rotation of the anemometer
-*/
-void isr_rotation () {
-  windMeter.serviceInterrupt();
+  obs.makeObservations(rainGauge, anemometer, sht, bmp);
+  Serial.println(obs.getNMEA());
 }
