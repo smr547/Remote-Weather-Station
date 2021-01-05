@@ -15,7 +15,7 @@
 #include <stdint.h>
 
 #include <Adafruit_BMP085.h>
-#include "cactus_io_SHT15.h"
+#include <SHT1x.h>
 
 #define SHT_DataPin 4        // data pin for SHT temperature/humidity sensor
 #define SHT_ClockPin 5       // clock pin for SHT temperature/humidity sensor
@@ -32,6 +32,7 @@
 
 namespace {
 constexpr long sleep_ms = 600000L; // ten minutes between each observation
+constexpr int debounce_ms = 3;     // time window within which consecutive interrupts are ignored
 }  // namespace
 
 // global functions
@@ -90,7 +91,7 @@ class RainGauge {
       now = millis();
       period_msecs = getPeriod_msecs(lastInterrupt, now);
 
-      if (period_msecs > 15 ) { // debounce the switch contact.
+      if (period_msecs > debounce_ms ) { // debounce the switch contact.
         tips++;
         lastInterrupt = now;
       }
@@ -134,7 +135,7 @@ class Anemometer {
     static constexpr int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
 
     volatile unsigned int  rotations = 0;                      // number of rotations this period
-    volatile unsigned long fastest_rot_msecs = 999999L;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
+    volatile unsigned long fastest_rot_msecs = ULONG_MAX;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
     volatile unsigned int  faster_count = 0;                   // increments when a faster rotation is measured
     volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds for last n fast rotations
     volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
@@ -157,7 +158,7 @@ class Anemometer {
 
       now = millis();
       period_msecs = getPeriod_msecs(last_interrupt_msecs, now);
-      if (period_msecs > 15 ) { // debounce the switch contact.
+      if (period_msecs > debounce_ms ) { // debounce the switch contact.
         rotations++;     // accumulate the number of rotations so we can compute average speed over integration period
         last_interrupt_msecs = now;
 
@@ -166,8 +167,8 @@ class Anemometer {
         if (period_msecs < fastest_rot_msecs) {
           faster_count++;                // this rotation beat past record
           aggregate_msecs += period_msecs; // sum the number of milliseconds over 10 rotations
-          if (faster_count == 10) {
-            fastest_rot_msecs = aggregate_msecs / 10; // previous record exceeded by 10 consecutive rotations
+          if (faster_count >= 10) {
+            fastest_rot_msecs = aggregate_msecs / faster_count; // previous record exceeded by 10 consecutive rotations
             faster_count = 0;
             aggregate_msecs = 0L;
           }
@@ -228,19 +229,33 @@ class Anemometer {
       // here p = 10 and t_sec = aggregate_msecs / 1000.0
       // therefor v_kts = 19575 / aggregate_msecs
 
+      float gust = 0.0;
+
       cli();
-      float gust = 19575.0 / aggregate_msecs;
+      if (fastest_rot_msecs != ULONG_MAX) {
+        gust = 1955.0 / fastest_rot_msecs;
+      }
 
       // reset the accumulators for the next period
 
-      fastest_rot_msecs = 99999L;
+      fastest_rot_msecs = ULONG_MAX;
       faster_count = 0;
       aggregate_msecs = 0L;
       sei();
 
       return gust;
     }
+    /*
+        String getDebugString(void) {
+          String comma = ", ";
+          String s = String(fastest_rot_msecs) + comma +
+                     String(faster_count) + comma +
+                     String(aggregate_msecs) + comma +
+                     String(last_interrupt_msecs);
 
+          return s;
+        }
+    */
 };
 
 /***
@@ -249,9 +264,9 @@ class Anemometer {
    Represents all the observations that are made by the weather station within a fixed period of time
 */
 class Observations {
-  public:
+  private:
     float temp_085_degC;     // air temperature degrees C as reported by the BMP085 pressure sensor
-    int   pressure_Pa;       // barametric pressure in Pascals
+    int32_t   pressure_Pa;   // barametric pressure in Pascals
     float humidity_Pcent;    // relative humidity as a percentage
     float temp_degC;         // temperature (degC) as reported by the SHT15
     float temp_degF;         // temperature (degF) as reported by the SHT15
@@ -262,17 +277,25 @@ class Observations {
     float windGust_kts;      // wind gust ths period (sustained for 10 revs of anemometer)
 
 
+    float calcDewPoint() {
+      float k;
+      k = log(humidity_Pcent / 100) + (17.62 * temp_degC) / (243.12 + temp_degC);
+      return 243.12 * k / (17.62 - k);
+    }
+
+
+  public:
     /**
        Read the sensors and record the results
     */
-    void makeObservations(RainGauge* rainGauge, Anemometer* anemometer, SHT15 sht, Adafruit_BMP085 bmp ) {
+    void makeObservations(RainGauge* rainGauge, Anemometer* anemometer, SHT1x sht, Adafruit_BMP085 bmp ) {
 
       temp_085_degC = bmp.readTemperature();
       pressure_Pa = bmp.readPressure();
-      humidity_Pcent = sht.getHumidity();
-      temp_degC   = sht.getTemperature_C();
-      temp_degF = sht.getTemperature_F();
-      dewpoint_degC = sht.getDewPoint();
+      humidity_Pcent = sht.readHumidity();
+      temp_degC   = sht.readTemperatureC();
+      temp_degF = sht.readTemperatureF();
+      dewpoint_degC = calcDewPoint();
       rainfall_mm = rainGauge->getRainfall_mm();
       windSpeed_kts = anemometer->getWindspeed_kts();
       windDirection_deg = anemometer->getWindDirection_deg();
@@ -296,26 +319,27 @@ class Observations {
          10 - wind gust (knots) for this period (sustained for 10 revs of anemometer)
 
     */
-    char * getNMEA(char * buff, int n) {
-      snprintf(buff, n, "$TRXDA,%f,%f,%f,%f,%f,%f,%f,%d,%f",
-               temp_degC,
-               pressure_Pa / 100.0,
-               humidity_Pcent,
-               temp_degC,
-               temp_degF,
-               dewpoint_degC,
-               rainfall_mm,
-               windSpeed_kts,
-               windDirection_deg,
-               windGust_kts);
+    String getNMEA() {
+      String comma = ",";
+      String s = "$TRXDA" + comma
+                 + temp_degC + comma
+                 + pressure_Pa + comma
+                 + humidity_Pcent + comma
+                 + temp_degC + comma
+                 + temp_degF + comma
+                 + dewpoint_degC + comma
+                 + rainfall_mm + comma
+                 + windSpeed_kts + comma
+                 + windDirection_deg + comma
+                 + windGust_kts;
 
-      return buff;
+      return s;
     }
 };
 
 // global variable
 
-SHT15 sht = SHT15(SHT_DataPin, SHT_ClockPin);
+SHT1x sht = SHT1x(SHT_DataPin, SHT_ClockPin);
 Anemometer* anemometer = Anemometer::instance();
 RainGauge* rainGauge = RainGauge::instance();
 Observations obs;
@@ -336,9 +360,18 @@ void setup() {
    Main program loop -- called continuously
 */
 void loop() {
-  char buffer[80];         // String buffer for NMEA sentences
-
+  /*
+    // delay(sleep_ms);
+    int i = 0;
+    while (1) {
+    delay(5000);
+    Serial.println(anemometer->getDebugString());
+    i++;
+    if (i >= 200)
+      break;
+    }
+  */
   delay(sleep_ms);
   obs.makeObservations(rainGauge, anemometer, sht, bmp);
-  Serial.println(obs.getNMEA(buffer, sizeof(buffer)));
+  Serial.println(obs.getNMEA());
 }
