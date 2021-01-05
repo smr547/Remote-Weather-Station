@@ -45,24 +45,25 @@ with serial.Serial(args.filename) as infile:
 
 
             params["field1"] = values[4]       #  temp
-            params["field2"] = values[3]       #  humidity
-            params["field3"] = float(values[2])/100.0    # pressure
-            params["field4"] = values[6]
+            params["field2"] = values[3]       #  humidity %
+            params["field3"] = values[6]       #  dew point degC
 
             # compute MSL pressure
 
-            t = float(values[4])
-            p = float(values[2])/100.0
+            t = float(values[4])               # temp deg_C
+            p = float(values[2])/100.0         # pressure at site (hPa)
+
             p_msl = p * pow(1.0 - ((0.0065 * h)/(t + (0.0065 * h) + 273.15)), -5.257)
 
-            params["field5"] = str(round(p_msl, 2))   # msl pressure
-            params["field6"] = values[8]              # wind speed
+            params["field4"] = str(round(p_msl, 2))   # msl pressure
+            params["field5"] = values[8]              # wind speed
+            params["field6"] = values[10]             # wind gust (knots)
             params["field7"] = values[9]              # wind direction
             params["field8"] = values[7]              # rainfall
 
 
             r = requests.post(url=url, params=params)
-            print(r.json())
+            print(r.json()) 
 
         except Exception as e:
             print("Oops!", e.__class__, ", (", e.message, ") occurred.")

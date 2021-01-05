@@ -16,11 +16,12 @@ void setup()
 }
 void loop()
 {
+  uint32_t pressure;
+
+  pressure = bmp.readPressure();
   Serial.print(bmp.readTemperature());
   Serial.print(",");
-  Serial.print(bmp.readPressure());
+  Serial.print(pressure /100.0);
   Serial.print("\n");
   delay(1000);
 }
-
-
