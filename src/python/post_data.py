@@ -62,7 +62,7 @@ with serial.Serial(args.filename) as infile:
 
 
             r = requests.post(url=url, params=params)
-            print(r.json())
+            print(r.json()) 
 
         except Exception as e:
             print("Oops!", e.__class__, ", (", e.message, ") occurred.")
