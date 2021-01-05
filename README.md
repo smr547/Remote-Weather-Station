@@ -77,4 +77,6 @@ The arduino code issued a NMEA sentenced every 10 minutes on the USB serial port
 * [ALDI mobile network information](https://apn-australia.gishan.net/en/apn/aldi)
 * [Arduino C programming reference](https://www.arduino.cc/reference/en/)
 * [SHT1x Arduino Library](https://github.com/practicalarduino/SHT1x)
+* [BOM terms and abbreviations](http://www.bom.gov.au/catalogue/observations/about-weather-observations.shtml) provides definitions for the values we are 
+attempting to record
 
