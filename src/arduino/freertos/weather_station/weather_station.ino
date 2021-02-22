@@ -3,6 +3,15 @@
 #include <queue.h>
 #include <timers.h>
 #include <limits.h>
+#include <Adafruit_BMP085.h>
+
+
+/*  Note:
+    BMP085 pressure and temperature sensor
+      SDA -- Pin A4
+      SCL -- Pin A5
+   hard coded in Wire library
+*/
 
 
 #define DEBUG 1
@@ -15,15 +24,31 @@ void TaskBlink( void *pvParameters );
 void TaskAnalogRead( void *pvParameters );
 void task_Sequencer(void *pvParameters);
 void task_WindVaneReader(void *pvParameters);
-void task_WindGustReader(void *pvParameters);
+void task_WindSpeedReader(void *pvParameters);
 void task_TempReader(void *pvParameters);
 void task_HumidityReader(void *pvParameters);
+void task_PressureReader(void *pvParameters);
 void task_DataReporter(void *pvParameters);
 void reportTimerCallback(void);
+
+
+// Sensors status bitmap
+
+#define TEMP_SENSOR 0
+#define HUMIDITY_SENSOR 1
+#define PRESSURE_SENSOR 2
+#define RAIN_SENSOR 3
+#define WIND_VANE_SENSOR 4
+#define WIND_SPEED_SENSOR 5
+
+byte sensorStatus;
+
 
 /************************************************************************************
    Global constants
  ************************************************************************************/
+
+
 
 namespace {
 // constexpr long sleep_ms = 600000L; // ten minutes between each observation
@@ -287,6 +312,8 @@ int ticks;   // incremented each report period
 int period_per_tick_millisecs;
 int ticks_per_day;
 
+Adafruit_BMP085 bmp;
+
 // Signals
 
 enum SIGNAL {REPORT, TICK, ALARM_9AM, READ};
@@ -296,33 +323,37 @@ enum SIGNAL {REPORT, TICK, ALARM_9AM, READ};
 
 TimerHandle_t t_reportTimer;
 
-// Sequencers's queue
+// Sequencers's queue and task handle
 TaskHandle_t th_Sequencer = NULL;
 QueueHandle_t q_Sequencer = NULL;
 
-// Wind vane reader's queue
+// Wind vane reader's signal queue and task handle
 TaskHandle_t th_WindVaneReader = NULL;
 QueueHandle_t q_WindVaneReader = NULL;
 
 
-// Wind gust reader's queue
-TaskHandle_t th_WindGustReader = NULL;
-QueueHandle_t q_WindGustReader = NULL;
+// Wind speed reader's signal queue and task handle
+TaskHandle_t th_WindSpeedReader = NULL;
+QueueHandle_t q_WindSpeedReader = NULL;
 
 
-// Wind gust reader's queue
+// Temperatur reader's signal queue and task handle
 TaskHandle_t th_TempReader = NULL;
 QueueHandle_t q_TempReader = NULL;
 
-// Wind gust reader's queue
+// Humidity reader's signal queue and task handle
 TaskHandle_t th_HumidityReader = NULL;
 QueueHandle_t q_HumidityReader = NULL;
 
-// Rain gauge reader's queue
+// Prussure reader's signal queue and task handle
+TaskHandle_t th_PressureReader = NULL;
+QueueHandle_t q_PressureReader = NULL;
+
+// Rain gauge reader's signal queue and task handle
 TaskHandle_t th_RainGaugeReader = NULL;
 QueueHandle_t q_RainGaugeReader = NULL;
 
-// DataReporter task and signal queue
+// DataReporter signal signal queue and task handle
 TaskHandle_t th_DataReporter = NULL;
 QueueHandle_t q_DataReporter = NULL;
 
@@ -334,6 +365,8 @@ TaskHandle_t th_AnalogRead = NULL;
 void setup() {
 
   BaseType_t rc;  // return code from FreeRTOS
+
+  sensorStatus = 0x00;
 
   // initialize serial communication at 9600 bits per second for debugging
   Serial.begin(115200);
@@ -370,9 +403,10 @@ void setup() {
   delay(2);
   q_Sequencer = xQueueCreate(5, sizeof(SIGNAL));
   q_WindVaneReader = xQueueCreate(1, sizeof(SIGNAL));
-  q_WindGustReader = xQueueCreate(1, sizeof(SIGNAL)); 
+  q_WindSpeedReader = xQueueCreate(1, sizeof(SIGNAL));
   q_TempReader = xQueueCreate(1, sizeof(SIGNAL));
   q_HumidityReader = xQueueCreate(1, sizeof(SIGNAL));
+  q_PressureReader = xQueueCreate(1, sizeof(SIGNAL));
   q_RainGaugeReader = xQueueCreate(2, sizeof(SIGNAL));
   q_DataReporter = xQueueCreate(1, sizeof(SIGNAL));
 
@@ -409,15 +443,15 @@ void setup() {
 
 
   rc = xTaskCreate(
-         task_WindGustReader
+         task_WindSpeedReader
          ,  "GUST"   // A name just for humans
          ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
          ,  NULL
          ,  2  // Priority
-         ,  &th_WindGustReader );
+         ,  &th_WindSpeedReader );
 
 #ifdef DEBUG
-  pass_fail_msg("create WindGustReader Task", rc);
+  pass_fail_msg("create WindSpeedReader Task", rc);
 #endif
 
 
@@ -448,6 +482,19 @@ void setup() {
 
 
   rc = xTaskCreate(
+         task_PressureReader
+         ,  "HUMID"   // A name just for humans
+         ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+         ,  NULL
+         ,  2  // Priority
+         ,  &th_PressureReader );
+
+#ifdef DEBUG
+  pass_fail_msg("create PressureReader Task", rc);
+#endif
+
+
+  rc = xTaskCreate(
          task_RainGaugeReader
          ,  "RAIN"   // A name just for humans
          ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
@@ -456,7 +503,7 @@ void setup() {
          ,  &th_RainGaugeReader );
 
 #ifdef DEBUG
-  pass_fail_msg("create WindGustReader Task", rc);
+  pass_fail_msg("create RainGuageReader Task", rc);
 #endif
 
 
@@ -573,7 +620,9 @@ void TaskBlink(void *pvParameters) {
     digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
     vTaskDelay( 1000 / portTICK_PERIOD_MS ); // wait for one second
 #ifdef DEBUG
-    Serial.println("LED flashed");
+    Serial.print("LED flashed, Sensor Status = 0x");
+    Serial.print(sensorStatus, HEX);
+    Serial.println("");
 #endif
   }
 }
@@ -610,11 +659,11 @@ void task_Sequencer(void *pvParameters) {
           pass_fail_msg("Sending READ to WindVaneReader", rc);
 #endif
 
-          // send READ signal to WindGustReader
+          // send READ signal to WindSpeedReader
           sig = READ;
-          rc = xQueueSend( q_WindGustReader, &sig, portMAX_DELAY );
+          rc = xQueueSend( q_WindSpeedReader, &sig, portMAX_DELAY );
 #ifdef DEBUG
-          pass_fail_msg("Sending READ to WindGustReader", rc);
+          pass_fail_msg("Sending READ to WindSpeedReader", rc);
 #endif
 
           // send READ signal to RainGaugeReader
@@ -633,11 +682,12 @@ void task_Sequencer(void *pvParameters) {
 #endif
 
 
-          // send READ signal to HumidityReader
+
+          // send READ signal to PressureReader
           sig = READ;
-          rc = xQueueSend( q_HumidityReader, &sig, portMAX_DELAY );
+          rc = xQueueSend( q_PressureReader, &sig, portMAX_DELAY );
 #ifdef DEBUG
-          pass_fail_msg("Sending READ to HumidityReader", rc);
+          pass_fail_msg("Sending READ to PressureReader", rc);
 #endif
 
           // send REPORT signal to DataReporter
@@ -716,7 +766,7 @@ void task_WindVaneReader(void *pvParameters) {
 /*
    This tasks reads the wind gust meter, records the results and resets the meter
 */
-void task_WindGustReader(void *pvParameters) {
+void task_WindSpeedReader(void *pvParameters) {
   (void) pvParameters;
 
   SIGNAL sig;
@@ -724,17 +774,66 @@ void task_WindGustReader(void *pvParameters) {
   for (;;) {
     // read the queue
 #ifdef DEBUG
-    Serial.println("WindGustReader waiting for signal");
+    Serial.println("WindSpeedReader waiting for signal");
     delay(2);
 #endif
-    if (xQueueReceive( q_WindGustReader, &sig, portMAX_DELAY ) == pdPASS) {
+    if (xQueueReceive( q_WindSpeedReader, &sig, portMAX_DELAY ) == pdPASS) {
       switch (sig) {
         case READ:  // read the wind gust value and record the result in Observations
           observations->windGusts_kts = anemometer->getGustSpeed_kts();
 #ifdef DEBUG
-          Serial.println("WindGust has been read");
+          Serial.println("WindSpeed has been read");
           delay(2);
 #endif
+          break;
+
+        default:
+          break; // ignore unknown signal
+      }
+    }
+  }
+}
+
+/*
+   This tasks reads atmostpheric pressure
+*/
+void task_PressureReader(void *pvParameters) {
+  (void) pvParameters;
+
+  SIGNAL sig;
+
+  if (!bmp.begin()) {
+#ifdef DEBUG
+    Serial.println("Could not find a BMP085 sensor!");
+    delay(2);
+#endif
+    sensorStatus |= 1 << PRESSURE_SENSOR;  // pressurs sensor not working, disable it
+  }
+
+  for (;;) {
+    // read the queue
+#ifdef DEBUG
+    Serial.println("PressureReader waiting for signal");
+    delay(2);
+#endif
+    if (xQueueReceive( q_PressureReader, &sig, portMAX_DELAY ) == pdPASS) {
+
+      switch (sig) {
+        case READ:  // read the wind gust value and record the result in Observations
+          if ( sensorStatus & (1 << PRESSURE_SENSOR)) {
+            observations->pressure_Pa = 0.0;  // sensor is disabled
+#ifdef DEBUG
+            Serial.println("Pressure sensor is disabled");
+            delay(2);
+#endif
+          } else {
+
+            observations->pressure_Pa = bmp.readPressure();
+#ifdef DEBUG
+            Serial.println("Pressure has been read");
+            delay(2);
+#endif
+          }
           break;
 
         default:

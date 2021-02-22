@@ -373,5 +373,5 @@ void loop() {
   */
   delay(sleep_ms);
   obs.makeObservations(rainGauge, anemometer, sht, bmp);
-  Serial.println(obs.getNMEA());
+  // Serial.println(obs.getNMEA());
 }
