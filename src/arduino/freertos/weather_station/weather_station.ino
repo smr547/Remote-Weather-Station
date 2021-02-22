@@ -5,6 +5,9 @@
 #include <limits.h>
 #include <Adafruit_BMP085.h>
 
+//
+
+#include "TempHumiditySense.h"
 
 /*  Note:
     BMP085 pressure and temperature sensor
@@ -307,6 +310,7 @@ class RainGauge {
  **************************************************************************************************/
 Anemometer* anemometer;
 RainGauge* rainGauge;
+TempHumiditySensor* tempHumiditySensor;
 Observations* observations;
 int ticks;   // incremented each report period
 int period_per_tick_millisecs;
@@ -383,7 +387,9 @@ void setup() {
   // initialialise globals
   anemometer = Anemometer::instance();
   rainGauge = RainGauge::instance();
+  tempHumiditySensor = new TempHumiditySensor;
   observations = Observations::instance();
+
   ticks = 0;   // incremented each report period
   //  period_per_tick_millisecs = 600000; // ten minutes
   period_per_tick_millisecs = 20000;  // 5 second
@@ -682,6 +688,13 @@ void task_Sequencer(void *pvParameters) {
 #endif
 
 
+          // send READ signal to HumidityReader
+          sig = READ;
+          rc = xQueueSend( q_HumidityReader, &sig, portMAX_DELAY );
+#ifdef DEBUG
+          pass_fail_msg("Sending READ to HumidityReader", rc);
+#endif
+
 
           // send READ signal to PressureReader
           sig = READ;
@@ -851,6 +864,14 @@ void task_TempReader(void *pvParameters) {
 
   SIGNAL sig;
 
+  if (! tempHumiditySensor->isOk()) {
+#ifdef DEBUG
+    Serial.println("Could not find a SHT15 sensor!");
+    delay(2);
+#endif
+    sensorStatus |= 1 << TEMP_SENSOR;  //  sensor not working, disable it
+  }
+
   for (;;) {
     // read the queue
 #ifdef DEBUG
@@ -859,12 +880,20 @@ void task_TempReader(void *pvParameters) {
 #endif
     if (xQueueReceive( q_TempReader, &sig, portMAX_DELAY ) == pdPASS) {
       switch (sig) {
-        case READ:  // read the wind gust value and record the result in Observations
-          //observations->windGusts_kts = anemometer->getGustSpeed_kts();
+        case READ:  // read the temperature and record the result in Observations
+          if ( sensorStatus & (1 << TEMP_SENSOR)) {
+            observations->temp_C = -40.0;  // sensor is disabled
 #ifdef DEBUG
-          Serial.println("Temp has been read");
-          delay(2);
+            Serial.println("Temperature sensor is disabled");
+            delay(2);
 #endif
+          } else {
+            observations->temp_C = tempHumiditySensor->readTemperatureC();
+#ifdef DEBUG
+            Serial.println("Temp has been read");
+            delay(2);
+#endif
+          }
           break;
 
         default:
@@ -882,6 +911,13 @@ void task_HumidityReader(void *pvParameters) {
   (void) pvParameters;
 
   SIGNAL sig;
+  if (! tempHumiditySensor->isOk()) {
+#ifdef DEBUG
+    Serial.println("Could not find a SHT15 sensor!");
+    delay(2);
+#endif
+    sensorStatus |= 1 << HUMIDITY_SENSOR;  //  sensor not working, disable it
+  }
 
   for (;;) {
     // read the queue
@@ -891,12 +927,20 @@ void task_HumidityReader(void *pvParameters) {
 #endif
     if (xQueueReceive( q_HumidityReader, &sig, portMAX_DELAY ) == pdPASS) {
       switch (sig) {
-        case READ:  // read the wind gust value and record the result in Observations
-          //observations->windGusts_kts = anemometer->getGustSpeed_kts();
+        case READ:  // read humidity and record the result in Observations
+          if ( sensorStatus & (1 << HUMIDITY_SENSOR)) {
+            observations->humidity_PC = -40.0;  // sensor is disabled
 #ifdef DEBUG
-          Serial.println("Humidity has been read");
-          delay(2);
+            Serial.println("Humidity sensor is disabled");
+            delay(2);
 #endif
+          } else {
+            observations->temp_C = tempHumiditySensor->readHumidity();
+#ifdef DEBUG
+            Serial.println("Humidity has been read");
+            delay(2);
+#endif
+          }
           break;
 
         default:
@@ -956,6 +1000,8 @@ void task_DataReporter(void *pvParameters) {
       switch (sig) {
         case REPORT:  // report all observations
           Serial.println("A data report has been sent");
+          Serial.println(observations->humidity_PC);
+          Serial.println(observations->temp_C);
           delay(2);
           break;
 
