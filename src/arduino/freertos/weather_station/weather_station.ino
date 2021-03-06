@@ -905,7 +905,7 @@ void task_TempReader(void *pvParameters) {
       switch (sig) {
         case READ:  // read the temperature and record the result in Observations
           if ( sensorStatus & (1 << TEMP_SENSOR)) {
-            observations->temp_C = -40.0;  // sensor is disabled
+            observations->temp_C = -99.0;  // sensor is disabled
 #ifdef DEBUG
             Serial.println("Temperature sensor is disabled");
             delay(2);
@@ -913,6 +913,10 @@ void task_TempReader(void *pvParameters) {
           } else {
             temp = tempHumiditySensor->readTemperatureC();
             observations->temp_C = temp;
+            if (temp < -40.0) {
+              sensorStatus |= 1 << TEMP_SENSOR; // flag problem with sensor
+            }
+            
 #ifdef DEBUG
             Serial.print("Temp has been read = ");
             Serial.print(temp);
@@ -962,6 +966,9 @@ void task_HumidityReader(void *pvParameters) {
 #endif
           } else {
             observations->humidity_PC = tempHumiditySensor->readHumidity();
+            if (observations->humidity_PC < 0.0) {
+              sensorStatus |= 1 << HUMIDITY_SENSOR; // sensor has failed
+            }
 #ifdef DEBUG
             Serial.println("Humidity has been read");
             delay(2);

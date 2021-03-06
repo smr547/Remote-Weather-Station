@@ -1,11 +1,11 @@
 #include <Arduino_FreeRTOS.h>
 #include "TempHumiditySense.h"
-#include <SHT1x.h>
+#include "SHT1x.h"
 #include <semphr.h>
 
 
 TempHumiditySensor::TempHumiditySensor() {
-  sht = new SHT1x(SHT_DataPin, SHT_ClockPin);
+  sht = new SHT15(SHT_DataPin, SHT_ClockPin);
   sht15_mutex = xSemaphoreCreateMutex();
 }
 
@@ -16,10 +16,6 @@ float TempHumiditySensor::readTemperatureC(){
   xSemaphoreTake(sht15_mutex, portMAX_DELAY);
   tempC = sht->readTemperatureC();
   xSemaphoreGive(sht15_mutex);
-  // Serial.print("readTemperture reports temp_C = ");
-  //temp = 21.09;
-  //Serial.print(tempC);
-  //Serial.println("");
   return tempC;
 }
 
