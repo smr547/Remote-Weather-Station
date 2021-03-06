@@ -21,6 +21,7 @@
 #include <WProgram.h>
 #endif
 
+#include <Arduino_FreeRTOS.h>
 #include "SHT15.h"
 
 SHT15::SHT15(int dataPin, int clockPin)
@@ -214,10 +215,10 @@ int SHT15::sendCommandSHT(int _command, int _dataPin, int _clockPin)
   return 0;
 }
 
-/**
-   Wait for the sensor to indicate the result is ready
-
-   Return 0 = ok, 1 = timeout
+/*
+ * Wait for the sensor to indicate the result is ready
+ * 
+ * Return 0 = ok, 1 = timeout (after 1 second)
 */
 int SHT15::waitForResultSHT(int _dataPin)
 {
@@ -226,9 +227,9 @@ int SHT15::waitForResultSHT(int _dataPin)
 
   pinMode(_dataPin, INPUT);
 
-  for (i = 0; i < 100; ++i)
-  {
-    delay(10);
+  for (i = 0; i < 20; ++i) {
+    // wait 50ms then test for sensor ACK signal
+    vTaskDelay(pdMS_TO_TICKS(50));
     ack = digitalRead(_dataPin);
 
     if (ack == LOW) {
