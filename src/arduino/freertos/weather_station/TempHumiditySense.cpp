@@ -1,19 +1,36 @@
+#include <Arduino_FreeRTOS.h>
 #include "TempHumiditySense.h"
 #include <SHT1x.h>
+#include <semphr.h>
 
 
 TempHumiditySensor::TempHumiditySensor() {
   sht = new SHT1x(SHT_DataPin, SHT_ClockPin);
+  sht15_mutex = xSemaphoreCreateMutex();
 }
 
 
 float TempHumiditySensor::readTemperatureC(){
-  return sht->readTemperatureC();
+  float tempC;
+
+  xSemaphoreTake(sht15_mutex, portMAX_DELAY);
+  tempC = sht->readTemperatureC();
+  xSemaphoreGive(sht15_mutex);
+  // Serial.print("readTemperture reports temp_C = ");
+  //temp = 21.09;
+  //Serial.print(tempC);
+  //Serial.println("");
+  return tempC;
 }
 
 
 float TempHumiditySensor::readHumidity(){
-  return sht->readHumidity();
+  float humid_pc;
+  
+  xSemaphoreTake(sht15_mutex, portMAX_DELAY);
+  humid_pc = sht->readHumidity();
+  xSemaphoreGive(sht15_mutex);
+  return humid_pc;
 }
 /*
  * At present there seems to be no way of detecting if the sensor is absent

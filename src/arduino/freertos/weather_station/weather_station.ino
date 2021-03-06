@@ -311,6 +311,8 @@ class RainGauge {
 Anemometer* anemometer;
 RainGauge* rainGauge;
 TempHumiditySensor* tempHumiditySensor;
+
+
 Observations* observations;
 int ticks;   // incremented each report period
 int period_per_tick_millisecs;
@@ -387,7 +389,7 @@ void setup() {
   // initialialise globals
   anemometer = Anemometer::instance();
   rainGauge = RainGauge::instance();
-  tempHumiditySensor = new TempHumiditySensor;
+  tempHumiditySensor = new TempHumiditySensor();
   observations = Observations::instance();
 
   ticks = 0;   // incremented each report period
@@ -517,7 +519,7 @@ void setup() {
   rc = xTaskCreate(
          task_DataReporter
          ,  "REPORT"   // A name just for humans
-         ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+         ,  256  // This stack size can be checked & adjusted by reading the Stack Highwater
          ,  NULL
          ,  2  // Priority
          ,  &th_DataReporter );
@@ -636,6 +638,9 @@ void TaskBlink(void *pvParameters) {
 /**
    Main controller is called the "Sequencer"
 */
+
+#define SENSOR_READ_WAIT_MSEC 4000
+
 void task_Sequencer(void *pvParameters) {
 
   SIGNAL sig_received;
@@ -703,6 +708,10 @@ void task_Sequencer(void *pvParameters) {
           pass_fail_msg("Sending READ to PressureReader", rc);
 #endif
 
+          // wait 2 seconds for the sensors to be read
+
+          vTaskDelay(pdMS_TO_TICKS(SENSOR_READ_WAIT_MSEC));
+
           // send REPORT signal to DataReporter
           sig = REPORT;
           rc = xQueueSend( q_DataReporter, &sig, portMAX_DELAY );
@@ -713,6 +722,12 @@ void task_Sequencer(void *pvParameters) {
           break;
 
         case ALARM_9AM:
+                  // send signal on to RainGaugeReader
+          sig = ALARM_9AM;
+          rc = xQueueSend( q_RainGaugeReader, &sig, portMAX_DELAY );
+#ifdef DEBUG
+          pass_fail_msg("Sending ALARM_9AM to RainGaugeReader", rc);
+#endif
           break;
 
         default:
@@ -737,6 +752,9 @@ void reportTimerCallback(void) {
 
   ticks += 1;
   if (ticks >= ticks_per_day) {
+    #ifdef DEBUG
+  pass_fail_msg("24 hrs have passed, ALARM_9AM signal queued to Sequencer", rc);
+#endif
     ticks = 0;
     sig = ALARM_9AM;
     xQueueSend(q_Sequencer, &sig, 0);
@@ -834,16 +852,20 @@ void task_PressureReader(void *pvParameters) {
       switch (sig) {
         case READ:  // read the wind gust value and record the result in Observations
           if ( sensorStatus & (1 << PRESSURE_SENSOR)) {
-            observations->pressure_Pa = 0.0;  // sensor is disabled
+            observations->pressure_Pa = 0;  // sensor is disabled
 #ifdef DEBUG
             Serial.println("Pressure sensor is disabled");
             delay(2);
 #endif
           } else {
 
-            observations->pressure_Pa = bmp.readPressure();
+            int32_t press = bmp.readPressure();
+
+            observations->pressure_Pa = press;
 #ifdef DEBUG
-            Serial.println("Pressure has been read");
+            Serial.print("Pressure has been read = ");
+            Serial.print(press);
+            Serial.println("");
             delay(2);
 #endif
           }
@@ -879,6 +901,7 @@ void task_TempReader(void *pvParameters) {
     delay(2);
 #endif
     if (xQueueReceive( q_TempReader, &sig, portMAX_DELAY ) == pdPASS) {
+      float temp;
       switch (sig) {
         case READ:  // read the temperature and record the result in Observations
           if ( sensorStatus & (1 << TEMP_SENSOR)) {
@@ -888,9 +911,12 @@ void task_TempReader(void *pvParameters) {
             delay(2);
 #endif
           } else {
-            observations->temp_C = tempHumiditySensor->readTemperatureC();
+            temp = tempHumiditySensor->readTemperatureC();
+            observations->temp_C = temp;
 #ifdef DEBUG
-            Serial.println("Temp has been read");
+            Serial.print("Temp has been read = ");
+            Serial.print(temp);
+            Serial.println("");
             delay(2);
 #endif
           }
@@ -935,7 +961,7 @@ void task_HumidityReader(void *pvParameters) {
             delay(2);
 #endif
           } else {
-            observations->temp_C = tempHumiditySensor->readHumidity();
+            observations->humidity_PC = tempHumiditySensor->readHumidity();
 #ifdef DEBUG
             Serial.println("Humidity has been read");
             delay(2);
@@ -968,10 +994,20 @@ void task_RainGaugeReader(void *pvParameters) {
 #endif
     if (xQueueReceive( q_RainGaugeReader, &sig, portMAX_DELAY ) == pdPASS) {
       switch (sig) {
-        case READ:  // read the wind gust value and record the result in Observations
-          // observations->windGusts_kts = anemometer->getGustSpeed_kts();
+        case READ:  // read the rain guage and record the result in Observations
+          observations->rainfall_mm = rainGauge->getRainfall_mm();
+          observations->rainfall929_mm += observations->rainfall_mm;
 #ifdef DEBUG
           Serial.println("RainGauge has been read");
+          delay(2);
+#endif
+          break;
+
+        case ALARM_9AM:  // 24 hrs has passed -- reset the daily accumulator
+
+          observations->rainfall929_mm = 0.0;
+#ifdef DEBUG
+          Serial.println("RainGauge daily accumulator has been reset");
           delay(2);
 #endif
           break;
@@ -983,12 +1019,18 @@ void task_RainGaugeReader(void *pvParameters) {
   }
 }
 
+
 /*
    The DataReporter tasks outputs the observations to the data recording service
 
 */
 void task_DataReporter(void *pvParameters) {
   (void) pvParameters;
+
+#define BUF_SIZE 80
+
+  char buff[BUF_SIZE] = "";
+  int n;
 
   SIGNAL sig;
 
@@ -1000,9 +1042,18 @@ void task_DataReporter(void *pvParameters) {
       switch (sig) {
         case REPORT:  // report all observations
           Serial.println("A data report has been sent");
-          Serial.println(observations->humidity_PC);
-          Serial.println(observations->temp_C);
-          delay(2);
+
+          n = observations->getNMEA(buff, BUF_SIZE);
+          if (n < 0) {
+#ifdef DEBUG
+            Serial.println("Error formatting NMEA sentence");
+            delay(2);
+#endif
+          } else {
+            Serial.write(buff, n);
+            Serial.println("");
+            delay(2);
+          }
           break;
 
         default:

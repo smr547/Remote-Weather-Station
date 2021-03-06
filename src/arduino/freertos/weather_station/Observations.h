@@ -10,21 +10,23 @@
 
 class Observations {
   private:
-    Observations() {};
+    Observations();
     //    virtual ~Observations();
+
+
   public:
     // Member variable
 
+    int32_t pressure_Pa;
+    int windDirection_deg;
     float temp_C;
     float humidity_PC;
     float dewPoint_C;
-    unsigned int pressure_Pa;
     float windSpeed_kts;
     float windGusts_kts;
-    int windDirection_deg;
     // rain guage
     float rainfall_mm;
-    float rain929_mm;
+    float rainfall929_mm;
     // GPS data
 
     /*
@@ -38,6 +40,18 @@ class Observations {
     double long_deg;
     double alt_m;
 */
+
+    // power supply measures
+
+    float v_battery_volts; // battery voltage
+    float i_battery_amps; // amps to/from battery (-ve =  discharging, +ve = charging
+    float v_solar_volts; // voltage across solar panel
+    float i_solar_amps; // current from solar panel
+    float v_in_volts;  // arduino voltage
+    float i_in_amps;   // arduino current
+
+
+    
     static Observations* instance() {
       static Observations* inst = new Observations;
       return inst;
@@ -45,6 +59,8 @@ class Observations {
 
     // Doesn't make sense to copy Observations.
     Observations(const Observations& other) = delete;
+
+    int getNMEA(char * buffer, int max_len);
 };
 
 #endif /* SRC_OBSERVATIONS_H_ */
