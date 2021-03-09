@@ -4,6 +4,7 @@
 #include <timers.h>
 #include <limits.h>
 #include <Adafruit_BMP085.h>
+#include "timing.h"
 
 //
 
@@ -21,6 +22,7 @@
 // #undef DEBUG
 
 #include "Observations.h"
+#include "Anemometer.h"
 
 // define two tasks for Blink & AnalogRead
 void TaskBlink( void *pvParameters );
@@ -55,7 +57,7 @@ byte sensorStatus;
 
 namespace {
 // constexpr long sleep_ms = 600000L; // ten minutes between each observation
-constexpr int debounce_ms = 3;     // time window within which consecutive interrupts are ignored
+// constexpr int debounce_ms = 3;     // time window within which consecutive interrupts are ignored
 }  // namespace
 
 
@@ -77,164 +79,10 @@ void pass_fail_msg(const char * msg, BaseType_t rc) {
   delay(2);
 }
 #endif
-/*
-   Compute the number of milliseconds between the supplied from and to times
-   noting that the time may have overflowed and wrapped to zero
-*/
-unsigned long getPeriod_msecs(unsigned long from_msecs, unsigned long to_msecs) {
-  unsigned long result = 0;
-
-  if (to_msecs < from_msecs) {
-    // timer has wrapped around
-    result = ULONG_MAX - from_msecs;
-    result += to_msecs;
-  } else {
-    result = to_msecs - from_msecs;
-  }
-  return result;
-}
 
 /*************************************************************************************
    SENSOR Classes (including IRQ handlers
  *************************************************************************************/
-
-/**
-   Class Anemometer represents the Davis Anemometer connected to the weather station.
-
-   For hardware details see: https://www.davisinstruments.com.au/product-page/6410-anemometer-for-vantage-pro
-*/
-class Anemometer {
-
-  private:
-
-    static constexpr int windSpeedPin = 2;  //D2 pin is connected to the wind speed reed switch (one pulse per revolution)
-    static constexpr int windInterrupt = 0; // D2 pulse causes interrupt 0
-    static constexpr int windOffset = 0;    // anemometer is aligned North/South
-    static constexpr int windDirectionPin = A3; // wind direction is encode via a potentiometer reading 0V - 5V (0 to 360 degrees true)
-
-    volatile unsigned int  rotations = 0;                      // number of rotations this period
-    volatile unsigned long fastest_rot_msecs = ULONG_MAX;     // fastest rotation measured in milliseconds -- updates with 10 consecutive faster rotations
-    volatile unsigned int  faster_count = 0;                   // increments when a faster rotation is measured
-    volatile unsigned long aggregate_msecs = 0L;           // number of milliseconds for last n fast rotations
-    volatile unsigned long last_interrupt_msecs = 0L;      // time of last interrupt
-
-    // Private constructor, obtain a RainGauge using RainGauge::instance().
-    Anemometer() {
-      pinMode(windSpeedPin, INPUT);
-      attachInterrupt(windInterrupt, []() {
-        instance()->serviceInterrupt();
-      }, FALLING);
-    }
-
-    /**
-       Service the interrupt caused by a single rotation of the anemometer
-    */
-    void serviceInterrupt(void) {
-
-      unsigned long now;
-      unsigned long period_msecs;
-
-      now = millis();
-      period_msecs = getPeriod_msecs(last_interrupt_msecs, now);
-      if (period_msecs > debounce_ms ) { // debounce the switch contact.
-        rotations++;     // accumulate the number of rotations so we can compute average speed over integration period
-        last_interrupt_msecs = now;
-
-        // record data so we can compute maximum wind gust during integration period
-
-        if (period_msecs < fastest_rot_msecs) {
-          faster_count++;                // this rotation beat past record
-          aggregate_msecs += period_msecs; // sum the number of milliseconds over 10 rotations
-          if (faster_count >= 10) {
-            fastest_rot_msecs = aggregate_msecs / faster_count; // previous record exceeded by 10 consecutive rotations
-            faster_count = 0;
-            aggregate_msecs = 0L;
-          }
-        } else { // didn't beat the record so zero the gust accumulators
-          faster_count = 0L;
-          aggregate_msecs = 0L;
-        }
-      }
-    }
-
-  public:
-
-    static Anemometer* instance() {
-      static Anemometer* inst = new Anemometer;
-      return inst;
-    }
-
-    // Doesn't make sense to copy RainGauges.
-    Anemometer(const Anemometer& other) = delete;
-    /**
-       Compute the wind direction by reading potentiometer voltage
-       and convertion to degrees true
-    */
-
-    int getWindDirection_deg(void) {
-      int vaneValue = analogRead(windDirectionPin);
-      int direction = map(vaneValue, 0, 1023, 0, 360);
-      direction = direction + windOffset;
-      if (direction > 360) direction -= 360;
-      if (direction < 0) direction += 360;
-      return direction;
-    }
-
-    /**
-       Compute and return the average wind speed in knots
-    */
-    float getWindspeed_kts(void) {
-
-      // wind speed -- average over 10 minutes
-      // convert to knots using the formula V=P(2.25/T)*0.87
-      // V_kts = P * (2.25/600) * 0.87
-      // V_kts = P * 0.0032625
-      //
-      cli(); // Disable interrupts -- prevents volitile variable changing during calcs
-      float windSpeed_kts = rotations * 0.0032625;
-      rotations = 0;
-      sei(); // Enables interrupts
-      return windSpeed_kts;
-
-    }
-
-    /**
-       Compute and return the maximum wind gust speed over the integration period
-    */
-    float getGustSpeed_kts(void) {
-
-      // v_kts = p * 1.9575 / t_sec
-      // here p = 10 and t_sec = aggregate_msecs / 1000.0
-      // therefor v_kts = 19575 / aggregate_msecs
-
-      float gust = 0.0;
-
-      cli();
-      if (fastest_rot_msecs != ULONG_MAX) {
-        gust = 1955.0 / fastest_rot_msecs;
-      }
-
-      // reset the accumulators for the next period
-
-      fastest_rot_msecs = ULONG_MAX;
-      faster_count = 0;
-      aggregate_msecs = 0L;
-      sei();
-
-      return gust;
-    }
-    /*
-        String getDebugString(void) {
-          String comma = ", ";
-          String s = String(fastest_rot_msecs) + comma +
-                     String(faster_count) + comma +
-                     String(aggregate_msecs) + comma +
-                     String(last_interrupt_msecs);
-
-          return s;
-        }
-    */
-};
 
 
 
@@ -274,7 +122,7 @@ class RainGauge {
       now = millis();
       period_msecs = getPeriod_msecs(lastInterrupt, now);
 
-      if (period_msecs > debounce_ms ) { // debounce the switch contact.
+      if (period_msecs > DEBOUNCE_MS ) { // debounce the switch contact.
         tips++;
         lastInterrupt = now;
       }
