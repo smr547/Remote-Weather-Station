@@ -5,6 +5,8 @@
 #include <limits.h>
 #include <Adafruit_BMP085.h>
 #include "timing.h"
+#include "signals.h"
+#include "powerTask.h"
 
 //
 
@@ -168,9 +170,7 @@ int ticks_per_day;
 
 Adafruit_BMP085 bmp;
 
-// Signals
 
-enum SIGNAL {REPORT, TICK, ALARM_9AM, READ};
 
 
 // Timers
@@ -265,6 +265,7 @@ void setup() {
   q_PressureReader = xQueueCreate(1, sizeof(SIGNAL));
   q_RainGaugeReader = xQueueCreate(2, sizeof(SIGNAL));
   q_DataReporter = xQueueCreate(1, sizeof(SIGNAL));
+  q_PowerTask = xQueueCreate(1, sizeof(SIGNAL));
 
   // Now set up tasks to run independently.
 

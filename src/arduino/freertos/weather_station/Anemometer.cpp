@@ -2,6 +2,7 @@
 #include "Anemometer.h"
 #include <limits.h>
 #include "timing.h"
+#include "signals.h"
 
 // Private constructor, obtain a RainGauge using RainGauge::instance().
 Anemometer::Anemometer() {
