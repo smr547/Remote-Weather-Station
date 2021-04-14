@@ -1,7 +1,7 @@
 #include <math.h>
 
 #define windSpeedPin (2) // D2 pin is connected to the wind speed reed switch (one pulse per revolution)
-#define windInterrupt (0)
+// #define windInterrupt (0)
 
 volatile unsigned long rotations; // cup rotation counter used in interrupt routine
 volatile unsigned long contactBounceTime; // Timer to avoid contact bounce in interrupt routine
@@ -9,14 +9,14 @@ volatile unsigned long contactBounceTime; // Timer to avoid contact bounce in in
 float windSpeed_kts;    // wind speed in knots
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   pinMode(windSpeedPin, INPUT);
   Serial.print("interrupt is ");
-  //  Serial.println(digitalPinToInterrupt(windSpeedPin));
-  Serial.println(windInterrupt);
+  Serial.println(digitalPinToInterrupt(windSpeedPin));
+ // Serial.println(windInterrupt);
   //  attachInterrupt(digitalPinToInterrupt(rainGaugePin), isr_bucket_tip, FALLING);
-  attachInterrupt(windInterrupt, isr_rotation, FALLING);
+  attachInterrupt(digitalPinToInterrupt(windSpeedPin), isr_rotation, FALLING);
 
   Serial.println("Davis Wind Speed Test");
   Serial.println("Rotations\t\tknots");
@@ -51,4 +51,3 @@ void isr_rotation () {
   }
 
 }
-
