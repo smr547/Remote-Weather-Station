@@ -31,4 +31,4 @@ class TempHumiditySensor {
 
 
 
-#endif SRC_TEMP_HUMIDITY_SENSE_H_
+#endif /* SRC_TEMP_HUMIDITY_SENSE_H_ */
