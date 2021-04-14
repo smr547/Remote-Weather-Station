@@ -2,7 +2,7 @@
 float batt_V;
 float vin_V;
 float batt_mA;
-float mv_per_count = 0.02063;
+float mv_per_count = 3.0 * 3.10/635.0;
 float mA_per_count = 500.0/1024.0;
 
 void setup() {
