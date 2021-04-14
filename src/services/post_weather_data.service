@@ -1,0 +1,14 @@
+[Unit]
+Description=Post weather data to ThingSpeak.com
+After=network-online.target
+
+[Service]
+ExecStart=/bin/bash /home/smr/projects/distrib_nmea/nmea_server.sh
+WorkingDirectory=/home/smr/projects/distrib_nmea
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=smr
+
+[Install]
+WantedBy=multi-user.target
