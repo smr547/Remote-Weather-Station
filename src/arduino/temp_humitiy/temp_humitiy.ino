@@ -36,7 +36,7 @@ SHT15 *  sht15 = new SHT15(4, 5);//Data, SCK
 
 void setup()
 {
-  Serial.begin(9600); // Open serial connection to report values to host
+  Serial.begin(115200); // Open serial connection to report values to host
 }
 //-------------------------------------------------------------------------------------------
 void loop()
