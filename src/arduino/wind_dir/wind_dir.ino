@@ -9,7 +9,7 @@ int LastValue;
 
 void setup() {
   LastValue = 1;
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Vane Value\tDirection\tHeading");
 }
 
@@ -57,5 +57,3 @@ void getHeading(int direction) {
   else
     Serial.println("N");
 }
-
-
