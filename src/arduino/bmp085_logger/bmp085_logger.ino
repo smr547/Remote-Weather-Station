@@ -6,7 +6,7 @@ Adafruit_BMP085 bmp;  // how does the code deteriming the pins for I2C SCL and S
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
   if (!bmp.begin())
   {
     Serial.println("Could not find a BMP085 sensor!");
