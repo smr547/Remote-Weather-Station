@@ -1,6 +1,6 @@
 #include <Arduino_FreeRTOS.h>
 #include "TempHumiditySense.h"
-#include "SHT1x.h"
+#include "SHT15.h"
 #include <semphr.h>
 
 

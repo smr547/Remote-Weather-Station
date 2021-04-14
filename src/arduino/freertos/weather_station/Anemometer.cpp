@@ -1,4 +1,4 @@
-#include <arduino.h>
+#include <Arduino.h>
 #include "Anemometer.h"
 #include <limits.h>
 #include "timing.h"
