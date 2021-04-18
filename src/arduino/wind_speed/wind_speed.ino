@@ -9,7 +9,7 @@ volatile unsigned long contactBounceTime; // Timer to avoid contact bounce in in
 float windSpeed_kts;    // wind speed in knots
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   pinMode(windSpeedPin, INPUT);
   Serial.print("interrupt is ");

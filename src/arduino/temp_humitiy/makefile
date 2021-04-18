@@ -1,6 +1,6 @@
 TARGET=arduino:avr:mega
 DEV=/dev/ttyACM0
-BAUD=9600
+BAUD=115200
 
 all:	compile
 

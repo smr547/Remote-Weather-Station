@@ -40,7 +40,7 @@ float mA_per_count_A2;
 float batt_power_mW;
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   mv_per_count_A0 = 1000.0 * (VREF / (ADC_MAX+1.0)) * ((Ra0 + Rb0)/Rb0) / G0;
   mv_per_count_A1 = 1000.0 * (VREF / (ADC_MAX+1.0)) * ((Ra1 + Rb1)/Rb1) / G1;
 

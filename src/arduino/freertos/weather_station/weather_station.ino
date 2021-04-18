@@ -223,7 +223,7 @@ void setup() {
   sensorStatus = 0x00;
 
   // initialize serial communication at 9600 bits per second for debugging
-  Serial.begin(115200);
+  Serial.begin(9600);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB, on LEONARDO, MICRO, YUN, and other 32u4 based boards.
   }
