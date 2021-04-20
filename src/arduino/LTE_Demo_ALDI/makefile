@@ -1,5 +1,5 @@
 TARGET=arduino:avr:mega
-DEV=/dev/ttyACM1
+DEV=/dev/ttyACM0
 BAUD=9600
 
 all:	compile
@@ -16,3 +16,4 @@ upload:
 
 end:
 	pkill tail
+
