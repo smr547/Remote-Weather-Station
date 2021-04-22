@@ -20,8 +20,8 @@
 */
 
 
-#define DEBUG 1
-// #undef DEBUG
+//#define DEBUG 1
+#undef DEBUG
 
 #include "Observations.h"
 #include "Anemometer.h"
@@ -67,7 +67,6 @@ namespace {
     Global functions
  *************************************************************************************/
 
-#ifdef DEBUG
 void pass_fail_msg(const char * msg, BaseType_t rc) {
   Serial.print(msg);
   Serial.print(": ");
@@ -80,7 +79,7 @@ void pass_fail_msg(const char * msg, BaseType_t rc) {
   }
   delay(2);
 }
-#endif
+
 
 /*************************************************************************************
    SENSOR Classes (including IRQ handlers
@@ -212,8 +211,31 @@ TaskHandle_t th_DataReporter = NULL;
 QueueHandle_t q_DataReporter = NULL;
 
 
+// CommandProcessor signal signal queue and task handle
+TaskHandle_t th_CommandProcessor = NULL;
+QueueHandle_t q_CommandProcessor = NULL;
+
 TaskHandle_t th_Blink = NULL;
-TaskHandle_t th_AnalogRead = NULL;
+
+/*
+ * The Serial hardware driver will call this function when 
+ * data is available for reading on the Serial port. 
+ * Post a message to the CommandProcessor letting it know that 
+ * a command may be ready for processing
+ */
+void serialEvent() {
+  
+  SIGNAL sig;
+  BaseType_t rc;  // return code from FreeRTOS
+
+  if (uxQueueMessagesWaiting(q_CommandProcessor) == 0 ) {
+    sig = SERIAL_DATA_AVAILABLE;
+    rc = xQueueSend( q_CommandProcessor, &sig, portMAX_DELAY );
+#ifdef DEBUG
+          pass_fail_msg("Sending SERIAL_DATA_AVAILABLE to CommandProcessor", rc);
+#endif
+  }
+}
 
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -223,7 +245,7 @@ void setup() {
   sensorStatus = 0x00;
 
   // initialize serial communication at 9600 bits per second for debugging
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB, on LEONARDO, MICRO, YUN, and other 32u4 based boards.
   }
@@ -266,6 +288,7 @@ void setup() {
   q_RainGaugeReader = xQueueCreate(2, sizeof(SIGNAL));
   q_DataReporter = xQueueCreate(1, sizeof(SIGNAL));
   q_PowerTask = xQueueCreate(1, sizeof(SIGNAL));
+  q_CommandProcessor = xQueueCreate(1, sizeof(SIGNAL));
 
   // Now set up tasks to run independently.
 
@@ -392,24 +415,27 @@ void setup() {
   pass_fail_msg("create Blink Task", rc);
 #endif
 
-  /*
+
+// Command processor
+
     rc = xTaskCreate(
-           TaskAnalogRead
-           ,  "AnalogRead"
-           ,  128  // Stack size
+           TaskCommandProcessor
+           ,  "CommandProcessor"
+           ,  256  // Stack size
            ,  NULL
            ,  1  // Priority
-           ,  &th_AnalogRead );
+           ,  &th_CommandProcessor );
     if (rc == pdPASS) {
-      Serial.println("AnalogRead Task created");
+      Serial.println("CommandProcessor Task created");
 
     delay(2);
     }
     if (rc == pdFAIL) {
-      Serial.print("AnalogRead Task failed");
+      Serial.print("CommandProcessor Task failed");
     }
-  */
-  // start the timer
+
+
+// start the timer
 
 #ifdef DEBUG
   Serial.println("starting main timer");
@@ -475,7 +501,7 @@ void TaskBlink(void *pvParameters) {
     digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     vTaskDelay( 1000 / portTICK_PERIOD_MS ); // wait for one second
     digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-    vTaskDelay( 1000 / portTICK_PERIOD_MS ); // wait for one second
+    vTaskDelay( 10000 / portTICK_PERIOD_MS ); // wait for ten second
 #ifdef DEBUG
     Serial.print("LED flashed, Sensor Status = 0x");
     Serial.print(sensorStatus, HEX);
@@ -887,13 +913,14 @@ void task_DataReporter(void *pvParameters) {
 
   char buff[BUF_SIZE] = "";
   int n;
-
   SIGNAL sig;
 
   for (;;) {
     // read the queue
+#ifdef DEBUG
     Serial.println("Reading q_DataReporter");
     delay(2);
+#endif
     if (xQueueReceive( q_DataReporter, &sig, portMAX_DELAY ) == pdPASS) {
       switch (sig) {
         case REPORT:  // report all observations
@@ -920,22 +947,82 @@ void task_DataReporter(void *pvParameters) {
 }
 
 
-void TaskAnalogRead(void *pvParameters) {
+void TaskCommandProcessor(void *pvParameters) {
   (void) pvParameters;
 
   /*
-    AnalogReadSerial
-    Reads an analog input on pin 0, prints the result to the serial monitor.
-    Graphical representation is available using serial plotter (Tools > Serial Plotter menu)
-    Attach the center pin of a potentiometer to pin A0, and the outside pins to +5V and ground.
-    This example code is in the public domain.
+    CommandProcessor
+    Processes commands received on the Serial port
+
+    At present, commands are simply echoed
   */
 
+  char buff[BUF_SIZE] = "";
+  char * ptr;
+  size_t n;
+  SIGNAL sig;
+
+  ptr = buff;
   for (;;) {
-    // read the input on analog pin 0:
-    int sensorValue = analogRead(A0);
-    // print out the value you read:
-    //Serial.println(sensorValue);
-    vTaskDelay(1);  // one tick delay (15ms) in between reads for stability
+    // read the queue
+#ifdef DEBUG
+    Serial.println("Reading q_CommandProcessor");
+    delay(2);
+#endif
+    if (xQueueReceive( q_CommandProcessor, &sig, portMAX_DELAY ) == pdPASS) {
+      switch (sig) {
+        case SERIAL_DATA_AVAILABLE:  // report all observations
+#ifdef DEBUG
+//    Serial.print("SERIAL_DATA_AVAILABLE: ");
+//    Serial.print(Serial.available());
+//    Serial.println(" bytes");
+//    delay(2);
+#endif
+          while (Serial.available() > 0) {
+            n = Serial.readBytes(ptr, 1);
+            Serial.print("Read ");
+            Serial.print(n);
+            Serial.print(" chars (");
+            Serial.print((int) *ptr);
+            Serial.println(")");
+            if (*ptr == '\n') {
+              Serial.println("<newline> detected");
+              *(ptr) = '\0';
+              processCommand(buff);
+              ptr = buff;
+              break;
+            }
+            ptr++;
+            *(ptr) = '\0';
+          }
+          break;
+
+        default:
+          break; // ignore unknown signal
+      }
+    }
+  }
+}
+
+void processCommand(char * command) {
+  SIGNAL sig;
+  BaseType_t rc;  // return code from FreeRTOS
+
+  if (strcmp(command, "w") == 0 ) {
+    // send READ signal to WindSpeedReader
+    sig = READ;
+    rc = xQueueSend( q_WindSpeedReader, &sig, portMAX_DELAY );
+    pass_fail_msg("Sending READ to WindSpeedReader", rc);
+  } else if (strcmp(command, "r") == 0 ) {
+    // send REPORT signal to DataReporter
+    sig = REPORT;
+    rc = xQueueSend( q_DataReporter, &sig, portMAX_DELAY );
+    pass_fail_msg("Sending REPORT to DataReporter", rc);
+  } else if (strcmp(command, "help") == 0 ) {
+    Serial.println("'help' received");
+  } else {
+     Serial.print("Unknown command: '");
+     Serial.print(command);
+     Serial.println("'");
   }
 }

@@ -1,6 +1,6 @@
 TARGET=arduino:avr:mega
 DEV=/dev/ttyACM0
-BAUD=9600
+BAUD=115200
 
 all:	compile
 
@@ -10,4 +10,9 @@ compile:
 upload:
 	arduino-cli upload -p $(DEV) --fqbn $(TARGET) .
 	stty -F $(DEV) $(BAUD) cs8 -cstopb -parenb
-	tail -f $(DEV)
+	tail -f $(DEV) &
+	echo "use: echo 'command' > $(DEV)"
+	echo "then: make end"
+
+end:
+	pkill tail
