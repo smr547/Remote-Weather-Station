@@ -26,3 +26,17 @@ The [UK Met office](https://www.metoffice.gov.uk/weather/guides/observations/how
 * A gale is defined as a surface wind of mean speed of 34-40 knots, averaged over a period of ten minutes. 
 * Terms such as 'severe gale', 'storm', etc are also used to describe winds of 41 knots or greater.
 
+## NMEA output
+
+* [Airmar manual](https://www.airmartechnology.com/uploads/installguide/PB100TechnicalManual_rev1.007.pdf) -- see sentence *$WIVWR* page 19
+
+## Interrupt rate
+
+P = VT/1.955195
+
+Assume gale of V=45 knots, T = 1 second, P = 23 pulses per sec or 1 pulse every 43 mSec.
+
+
+
+
+
