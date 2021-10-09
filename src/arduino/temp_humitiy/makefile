@@ -10,4 +10,4 @@ compile:
 upload:
 	arduino-cli upload -p $(DEV) --fqbn $(TARGET) .
 	stty -F $(DEV) $(BAUD) cs8 -cstopb -parenb
-	tail -f $(DEV)
+	cat $(DEV)

@@ -792,7 +792,6 @@ void loop() {
           Serial.print(F("Heading: ")); Serial.println(heading);
           Serial.print(F("Altitude: ")); Serial.println(altitude);
           // Comment out the stuff below if you don't care about UTC time
-          /*
             Serial.print(F("Year: ")); Serial.println(year);
             Serial.print(F("Month: ")); Serial.println(month);
             Serial.print(F("Day: ")); Serial.println(day);
@@ -800,7 +799,6 @@ void loop() {
             Serial.print(F("Minute: ")); Serial.println(minute);
             Serial.print(F("Second: ")); Serial.println(second);
             Serial.println(F("---------------------"));
-          */
         }
 
         break;
@@ -1139,7 +1137,7 @@ void powerOn(void) {
   Serial.println(F("Configuring to 9600 baud"));
   fonaSS.println("AT+IPR=9600"); // Set baud rate
   delay(100); // Short pause to let the command run
-  fonaSS.begin(9600);
+  fonaSS.begin(115200);
   if (! fona.begin(fonaSS)) {
     Serial.println(F("Couldn't find FONA"));
     while (1); // Don't proceed if it couldn't find the device
