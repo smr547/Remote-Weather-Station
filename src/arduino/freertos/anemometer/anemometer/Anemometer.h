@@ -10,6 +10,11 @@
 
 #include <limits.h>
 
+struct windVector {
+  float eVel;
+  float nVel;
+};
+
 /**
    Class Anemometer represents the Davis Anemometer connected to the weather station.
 
@@ -48,6 +53,7 @@ class Anemometer {
     // float getGustSpeed_kts(void);
     unsigned int getRotations(void);
     unsigned int getRotationsSince(unsigned int rotationsNow, unsigned int rotationsBefore);
+    windVector * getWindVector(windVector * windVec, float windSpeed_kts, float windDirection_deg);
 };
 
 #endif /* SRC_ANEMOMETER_H_ */

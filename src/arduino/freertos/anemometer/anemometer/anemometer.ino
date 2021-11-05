@@ -47,10 +47,11 @@ void vTimerCallback1SecExpired(TimerHandle_t pxTimer) {
   rotations = anemometer->getRotations();
   float windSpeed_kts = anemometer->getWindspeed_kts(anemometer->getRotationsSince(rotations, lastRotations), period_ms);
   dtostrf(windSpeed_kts, 6, 1, fp_buf);
-  sprintf(buf, "rotations=%d, (%d) %s knots", 
+  sprintf(buf, "rotations=%d,(%d),%s,%d", 
       rotations, 
       anemometer->getRotationsSince(rotations, lastRotations),
-      fp_buf
+      fp_buf,
+      anemometer->getWindDirection_deg()
       );
   serialOut(buf);
   lastRotations = rotations;
@@ -113,13 +114,13 @@ void setup() {
   serialQ = xQueueCreate(serialQ_len, STRING_BUF_LEN);
 
   if (serialQ == NULL) {
-    Serial.println("Serial Q could not be created");
+    Serial.println(F("Serial Q could not be created"));
   } else {
-    Serial.println("Serial Q created");
+    Serial.println(F("Serial Q created"));
   }
 
   if (anemometer == NULL) {
-    Serial.println("anemometer is NOT assigned");
+    Serial.println(F("anemometer is NOT assigned"));
   }
 
 
@@ -127,24 +128,24 @@ void setup() {
 
 
   // start the serial output task
-  Serial.println("Starting serial output task");
+  Serial.println(F("Starting serial output task"));
   BaseType_t xReturned;
   xReturned = xTaskCreate(serialOutputCode,
-                          "Serial output task",
+                          (char *) F("Serial output task"),
                           256,
                           NULL,
                           2,
                           NULL) ;
 
   if (xReturned == pdPASS) {
-    Serial.println("Serial output task created");
+    Serial.println(F("Serial output task created"));
   } else {
-    Serial.println("Serial output task NOT created");
+    Serial.println(F("Serial output task NOT created"));
   }
 
   
   timerHndl1Sec = xTimerCreate(
-                    "timer1Sec", /* name */
+                    (char *) F("timer1Sec"), /* name */
                     pdMS_TO_TICKS(1000), /* period/time */
                     pdTRUE, /* auto reload */
                     (void*)0, /* timer ID */
@@ -157,7 +158,7 @@ void setup() {
   }
 
     timerHndlTestOutput = xTimerCreate(
-                    "time_test_output", /* name */
+                    (char *) F("time_test_output"), /* name */
                     pdMS_TO_TICKS(25), /* period/time */
                     pdTRUE, /* auto reload */
                     (void*)0, /* timer ID */
@@ -168,18 +169,18 @@ void setup() {
 
 
   if (xTimerStart(timerHndl1Sec, portMAX_DELAY) != pdPASS) {
-    Serial.println("Could not start software timer");
+    Serial.println(F("Could not start software timer"));
     for (;;); /* failure!?! */
   }
 
   if (xTimerStart(timerHndlTestOutput, portMAX_DELAY) != pdPASS) {
-    Serial.println("Could not start software timer");
+    Serial.println(F("Could not start software timer"));
     for (;;); /* failure!?! */
   }
 
 
 
-  Serial.println("At the end of setup()");
+  Serial.println(F("At the end of setup()"));
 
   // delete this task so only the timer is running
 
