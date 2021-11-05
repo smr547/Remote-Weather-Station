@@ -4,7 +4,8 @@
 
 ## Design considerations
 
-Refer to the [anemometer spec sheet](https://cdn.shopify.com/s/files/1/0515/5992/3873/files/6410_SS.pdf)
+* Refer to the [anemometer spec sheet](https://cdn.shopify.com/s/files/1/0515/5992/3873/files/6410_SS.pdf)
+* [Calibration data](https://www.davis-tr.com/Downloads/Davis_Rzgr_Kepceleri_Karakteristikleri.pdf)
 
 ## Speed computation
 
