@@ -243,13 +243,92 @@ me-&gt;fork[n] = FREE;</action>
     <state_diagram size="50,66"/>
    </statechart>
   </class>
+  <class name="Anemometer" superclass="qpn::QActive">
+   <documentation>/**
+The Anemometer class produces a wind observation event each second
+**/</documentation>
+   <attribute name="last_rotations" type="int16_t" visibility="0x02" properties="0x00">
+    <documentation>// remembers the last processed rotation count  so we can  compute the wind velocity each second</documentation>
+   </attribute>
+   <statechart properties="0x01">
+    <initial target="../1">
+     <initial_glyph conn="23,10,5,1,23,8,-6">
+      <action box="0,-2,10,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="initialising">
+     <entry brief="arm timer">QActive_armX(&amp;me-&gt;super, 0U, ONE_SECOND, ONE_SECOND);</entry>
+     <exit brief="set last_rotations">cli();
+me-&gt;last_rotations = rotations;
+sei();</exit>
+     <tran trig="Q_TIMEOUT" target="../../2">
+      <tran_glyph conn="23,21,3,1,10,2,10,11,-2">
+       <action box="0,1,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="23,15,17,12">
+      <entry box="1,2,13,2"/>
+      <exit box="1,4,13,2"/>
+     </state_glyph>
+    </state>
+    <state name="reporting">
+     <entry brief="report ">
+int16_t revs;
+char str_temp[8];    // buffer for speed string
+
+cli();
+revs = rotations;     // compute rotations over the past second
+if (revs &lt; me-&gt;last_rotations) {
+    revs += INT_MAX - me-&gt;last_rotations;
+} else {
+    revs -= me-&gt;last_rotations;
+}
+me-&gt;last_rotations = rotations;
+sei();
+// compute wind speed in knots
+
+float speed_kts = revs * 1.955196;
+
+// get the wind directions
+
+int vaneValue = analogRead(WIND_VANE_PIN);
+int direction = map(vaneValue, 0, 1023, 0, 360);
+int calDirection = direction + windOffset;
+
+if (calDirection &gt;= 360)
+    calDirection = calDirection - 360;
+
+if (calDirection &lt; 0)
+    calDirection = calDirection + 360;
+
+dtostrf(speed_kts, 4, 2, str_temp);
+
+BSP_displayWind(str_temp, calDirection);
+
+
+
+
+</entry>
+     <tran trig="Q_TIMEOUT" target="..">
+      <tran_glyph conn="23,35,3,2,8,6,8,-4">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="23,29,18,8">
+      <entry box="1,2,6,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
  </package>
- <directory name="./dpp">
-  <file name="dpp.ino">
+ <directory name="./weather_station">
+  <file name="weather_station.ino">
    <text>#include &quot;qpn.h&quot;      // QP-nano framework
 #include &quot;Arduino.h&quot;  // Main include file for the Arduino SDK
+#include &lt;limits.h&gt;
 
-Q_DEFINE_THIS_MODULE(&quot;dpp&quot;)
+Q_DEFINE_THIS_MODULE(&quot;weather_station&quot;)
 
 //============================================================================
 enum DPPSignals {
@@ -269,7 +348,14 @@ enum {
 // declare all AO classes...
 $declare${AOs::Philo}
 $declare${AOs::Table}
+$declare${AOs::Anemometer}
 //...
+
+#define ANEMOMETER_PIN 2
+#define WIND_VANE_PIN A3
+
+volatile int16_t  rotations = 0; // count the rotations of the Anemometer
+int windOffset = 0;
 
 // define all AO instances and event queue buffers for them...
 Philo AO_Philo[N_PHILO];
@@ -277,6 +363,9 @@ static QEvt l_philoQueue[N_PHILO][N_PHILO];
 
 Table AO_Table;
 static QEvt l_tableQueue[2];
+
+Anemometer AO_Anemometer;
+static QEvt l_anemometerQueue[2];
 //...
 
 //============================================================================
@@ -288,7 +377,8 @@ QActiveCB const Q_ROM QF_active[] = {
     { (QActive *)&amp;AO_Philo[2], l_philoQueue[2],  Q_DIM(l_philoQueue[2])  },
     { (QActive *)&amp;AO_Philo[3], l_philoQueue[3],  Q_DIM(l_philoQueue[3])  },
     { (QActive *)&amp;AO_Philo[4], l_philoQueue[4],  Q_DIM(l_philoQueue[4])  },
-    { (QActive *)&amp;AO_Table,    l_tableQueue,     Q_DIM(l_tableQueue)     }
+    { (QActive *)&amp;AO_Table,    l_tableQueue,     Q_DIM(l_tableQueue)     },
+    { (QActive *)&amp;AO_Anemometer,    l_anemometerQueue,     Q_DIM(l_anemometerQueue)     }
 };
 
 //============================================================================
@@ -300,7 +390,8 @@ enum {
     LED_L             = 13,  // the pin number of the on-board LED (L)
     PHILO_0_PRIO      = 1,   // priority of the first Philo AO
     THINK_TIME        = 3*BSP_TICKS_PER_SEC, // time for thinking
-    EAT_TIME          = 2*BSP_TICKS_PER_SEC  // time for eating
+    EAT_TIME          = 2*BSP_TICKS_PER_SEC,  // time for eating
+    ONE_SECOND        = BSP_TICKS_PER_SEC    // a one second timer
 };
 
 //............................................................................
@@ -328,6 +419,15 @@ void BSP_displayPaused(uint8_t paused) {
 }
 
 //............................................................................
+void BSP_displayWind(char * speed_kts, int direction) {
+    Serial.print(F(&quot;Wind: &quot;));
+    Serial.print(speed_kts);
+    Serial.print(F(&quot; kts, &quot;));
+    Serial.print(direction);
+    Serial.println(&quot; degrees&quot;);
+}
+
+//............................................................................
 void setup() {
     // initialize the QF-nano framework
     QF_init(Q_DIM(QF_active));
@@ -339,9 +439,13 @@ void setup() {
     QActive_ctor(&amp;AO_Philo[3].super, Q_STATE_CAST(&amp;Philo_initial));
     QActive_ctor(&amp;AO_Philo[4].super, Q_STATE_CAST(&amp;Philo_initial));
     QActive_ctor(&amp;AO_Table.super,    Q_STATE_CAST(&amp;Table_initial));
+    QActive_ctor(&amp;AO_Anemometer.super,    Q_STATE_CAST(&amp;Anemometer_initial));
 
     // initialize the hardware used in this sketch...
     pinMode(LED_L, OUTPUT); // set the LED-L pin to output
+    pinMode(ANEMOMETER_PIN, INPUT);
+
+    attachInterrupt(digitalPinToInterrupt(ANEMOMETER_PIN), ISR_anemometer, FALLING);
 
     Serial.begin(115200);   // set the highest stanard baud rate of 115200 bps
     Serial.print(F(&quot;QP-nano: &quot;));
@@ -370,6 +474,14 @@ ISR(TIMER2_COMPA_vect) {
                 QACTIVE_POST_ISR(&amp;AO_Table, SERVE_SIG, 0U);
                 break;
         }
+    }
+}
+
+//............................................................................
+void ISR_anemometer(void) {
+    rotations++;
+    if (rotations &lt; 0) {
+        rotations = 0;
     }
 }
 
@@ -424,6 +536,7 @@ enum {
 };
 
 $define${AOs::Table}
+$define${AOs::Anemometer}
 //...
 </text>
   </file>
