@@ -68,6 +68,17 @@ The arduino code issued a NMEA sentenced every 10 minutes on the USB serial port
 1. current wind direction (cardinal points)
 1. rain accumulation past 10 minutes (0.2mm precision)
 
+
+## Prototype 2
+
+The second prototype will be deployed on a remote rural block north of Gundaroo, NSW, Australia. In addition to the features developed in the first prototype, this model will include:
+
+1. [5W Solar panel](https://www.jaycar.com.au/12v-5w-solar-panel-with-clips/p/ZM9050)
+1. [12V SLA battery](https://www.jaycar.com.au/12v-18ah-sla-battery/p/SB2490) (18Ah capacity)
+1. [MPPT solar battery charger](https://www.jaycar.com.au/miniature-12v-3a-pwm-solar-charge-controller/p/MP3762) (3A @ 12V)
+1. [Switch mode DC-DC converter](https://au.element14.com/recom-power/r-78c9-0-1-0/switching-regulator-9v-1a/dp/1903041) (battery voltage to 9V at 1A) to power the electronics 
+1. 3G/4G data communications module [SIM7000](https://www.botletics.com/products/sim7000-shield) 
+
 ## Intersting links
 * [Wind reporting in the NAS](https://ral.ucar.edu/general/Summer2012/FPAW_2012_Summer_Presentations/Seg%204%20Surface%20Observations%20Riger%20Sultan/Armbruster%20Wind%20Reporting.pdf)
 * [LTE shield instructable](https://www.instructables.com/LTE-NB-IoT-Shield-for-Arduino/)
