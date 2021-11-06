@@ -247,9 +247,10 @@ me-&gt;fork[n] = FREE;</action>
    <documentation>/**
 The Anemometer class produces a wind observation event each second
 **/</documentation>
-   <attribute name="last_rotations" type="int16_t" visibility="0x02" properties="0x00">
+   <attribute name="last_rotations" type="uint16_t" visibility="0x02" properties="0x00">
     <documentation>// remembers the last processed rotation count  so we can  compute the wind velocity each second</documentation>
    </attribute>
+   <attribute name="millis_now" type="uint32_t" visibility="0x02" properties="0x00"/>
    <statechart properties="0x01">
     <initial target="../1">
      <initial_glyph conn="23,10,5,1,23,8,-6">
@@ -273,21 +274,20 @@ sei();</exit>
     </state>
     <state name="reporting">
      <entry brief="report ">
-int16_t revs;
+uint16_t revs;
+int period_ms;
 char str_temp[8];    // buffer for speed string
 
 cli();
-revs = rotations;     // compute rotations over the past second
-if (revs &lt; me-&gt;last_rotations) {
-    revs += INT_MAX - me-&gt;last_rotations;
-} else {
-    revs -= me-&gt;last_rotations;
-}
+revs = rotations - me-&gt;last_rotations;     // compute rotations over period
 me-&gt;last_rotations = rotations;
+period_ms = millis() - me-&gt;millis_now;    // msecs since last run
+me-&gt;millis_now = millis();
 sei();
+
 // compute wind speed in knots
 
-float speed_kts = revs * 1.955196;
+float speed_kts = revs * 1.955196 / (period_ms / 1000.0);
 
 // get the wind directions
 
@@ -354,7 +354,7 @@ $declare${AOs::Anemometer}
 #define ANEMOMETER_PIN 2
 #define WIND_VANE_PIN A3
 
-volatile int16_t  rotations = 0; // count the rotations of the Anemometer
+volatile uint16_t  rotations = 0; // count the rotations of the Anemometer
 int windOffset = 0;
 
 // define all AO instances and event queue buffers for them...
