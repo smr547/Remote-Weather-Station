@@ -31,7 +31,7 @@ until we have a fully functional Weather Station. The DPP code will then be remo
 The design feature an ISR and multiple active objects:
 
 * an ISR to count anemometer rotations
-* a single AO::WindReport to report instataneous win velocity and send a Event::WindReport signal to
+* a single AO::Aneometer to report instataneous win velocity and send a Event::WindReport signal to
 * a single AO::Guster which computes the average velocity over 3 seconds publishing Event::GustReport 
 * instances of AO::IntervalReporter each of which subscribe to GustReports and produces a report at the prescribed interval
 

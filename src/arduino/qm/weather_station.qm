@@ -389,6 +389,43 @@ m_fork[n] = FREE;</action>
     <state_diagram size="50,69"/>
    </statechart>
   </class>
+  <!--${AOs::Anemometer}-->
+  <class name="Anemometer" superclass="qpcpp::QActive">
+   <!--${AOs::Anemometer::last_rotations}-->
+   <attribute name="last_rotations" type="uint16_t" visibility="0x02" properties="0x00">
+    <documentation>// number of revolution at last TIMEOUT</documentation>
+   </attribute>
+   <!--${AOs::Anemometer::instance}-->
+   <attribute name="instance" type="Anemometer" visibility="0x00" properties="0x01">
+    <documentation>the (static) instance of the class</documentation>
+   </attribute>
+   <!--${AOs::Anemometer::rotations}-->
+   <attribute name="rotations" type="volatile uint16_t" visibility="0x00" properties="0x00"/>
+   <!--${AOs::Anemometer::windOffset_deg}-->
+   <attribute name="windOffset_deg" type="int16_t" visibility="0x00" properties="0x00"/>
+   <!--${AOs::Anemometer::Anemometer}-->
+   <operation name="Anemometer" type="" visibility="0x00" properties="0x00">
+    <code>  : QActive(Q_STATE_CAST(&amp;Anemometer::initial))
+
+last_rotations = 0;
+rotations = 0;
+windOffset_deg = 0;</code>
+   </operation>
+   <!--${AOs::Anemometer::SM}-->
+   <statechart properties="0x00">
+    <!--${AOs::Anemometer::SM::initial}-->
+    <initial target="../1">
+     <initial_glyph conn="14,6,5,1,19,12,-2">
+      <action box="0,-2,10,2"/>
+     </initial_glyph>
+    </initial>
+    <!--${AOs::Anemometer::SM::state1}-->
+    <state name="state1">
+     <state_glyph node="17,15,14,7"/>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
   <!--${AOs::AO_Philo[N_PHILO]}-->
   <attribute name="AO_Philo[N_PHILO]" type="QP::QActive * const" visibility="0x00" properties="0x00">
    <code>= { // &quot;opaque&quot; pointers to Philo AO
@@ -402,6 +439,10 @@ m_fork[n] = FREE;</action>
   <!--${AOs::AO_Table}-->
   <attribute name="AO_Table" type="QP::QActive * const" visibility="0x00" properties="0x00">
    <code>= &amp;Table::instance; // &quot;opaque&quot; AO pointer</code>
+  </attribute>
+  <!--${AOs::AO_Anemometer}-->
+  <attribute name="AO_Anemometer" type="QP::QActive * const" visibility="0x00" properties="0x00">
+   <code>= &amp;Anemometer::instance; // &quot;opaque&quot; AO pointer</code>
   </attribute>
  </package>
  <!--${./weather_station}-->
@@ -444,6 +485,11 @@ void setup() {
     AO_Table-&gt;start((uint_fast8_t)(N_PHILO + 1U), // priority
         tableQueueSto, Q_DIM(tableQueueSto),
         (void *)0, 0U);
+   // start Anemometer
+    static QP::QEvt const *anemometerQueueSto[2];
+    AO_Anemometer-&gt;start((uint_fast8_t)(N_PHILO + 2U), // priority
+        anemometerQueueSto, Q_DIM(tableQueueSto),
+        (void *)0, 0U);
 }
 
 //............................................................................
@@ -456,6 +502,14 @@ void loop() {
   <file name="bsp.hpp">
    <text>#ifndef BSP_HPP
 #define BSP_HPP
+
+#define ANEMOMETER_PIN 2
+#define WIND_VANE_PIN A3
+
+//............................................................................
+// volatile uint16_t  rotations; // count the rotations of the Anemometer
+// int16_t windOffset_deg;      // wind calibration offset in degrees
+
 
 class BSP {
 public:
@@ -482,8 +536,11 @@ public:
    <text>#include &quot;qpcpp.hpp&quot;   // QP-C++ framework
 #include &quot;dpp.hpp&quot;     // DPP application
 #include &quot;bsp.hpp&quot;     // Board Support Package
+#include &quot;anemometer.hpp&quot;
 
 using namespace QP;
+
+
 
 //----------------------------------------------------------------------------
 // BSP functions
@@ -586,6 +643,13 @@ void TIMER_HANDLER(void) {
         }
     }
 }
+
+
+//............................................................................
+void ISR_anemometer(void) {
+    // service interrupt caused by rotation of anemometer
+    ((Anemometer *) AO_Anemometer)-&gt;rotations++;
+}
 //............................................................................
 void QF::onStartup(void) {
     // configure the timer-counter channel........
@@ -611,7 +675,15 @@ void QF::onStartup(void) {
     // enable the interrupts in the NVIC
     NVIC_EnableIRQ(TIMER_IRQn);
     // ...
+
+//............................................................................
+
+    // Configure the interrupt handler for Anemometer Rotations
+    pinMode(ANEMOMETER_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(ANEMOMETER_PIN), ISR_anemometer, FALLING);
 }
+
+
 //............................................................................
 void QV::onIdle(void) { // called with interrupts DISABLED
 #ifdef NDEBUG
@@ -666,6 +738,7 @@ enum { N_PHILO = 5 };
 // generate declarations of all opaque pointers...
 $declare(AOs::AO_Philo[N_PHILO])
 $declare(AOs::AO_Table)
+$declare(AOs::AO_Anemometer)
 
 #endif // DPP_HPP
 </text>
@@ -738,6 +811,34 @@ static char const * const EATING   = &quot;eating  &quot;;
 
 // generate definition of the AO ---------------------------------------------
 $define${AOs::Table}
+</text>
+  </file>
+  <!--${./weather_statio~::anemometer.cpp}-->
+  <file name="anemometer.cpp">
+   <text>#include &quot;qpcpp.hpp&quot;   // QP-C++ framework
+#include &quot;dpp.hpp&quot;     // DPP application
+#include &quot;bsp.hpp&quot;     // Board Support Package
+#include &quot;anemometer.hpp&quot;
+
+Q_DEFINE_THIS_FILE
+
+// generate definition of the opaque pointer to the AO -----------------------
+$define${AOs::AO_Anemometer}
+
+// initialisation of AO_Anemometer should go here
+
+
+// generate definition  of the AO --------------------------------------------
+$define${AOs::Anemometer}</text>
+  </file>
+  <!--${./weather_statio~::anemometer.hpp}-->
+  <file name="anemometer.hpp">
+   <text>#ifndef ANEMOMETER_HPP
+#define ANEMOMETER_HPP
+
+$declare(AOs::Anemometer)
+
+#endif // ANEMOMETER_HPP
 </text>
   </file>
  </directory>
