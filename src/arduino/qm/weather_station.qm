@@ -391,25 +391,42 @@ m_fork[n] = FREE;</action>
   </class>
   <!--${AOs::Anemometer}-->
   <class name="Anemometer" superclass="qpcpp::QActive">
-   <!--${AOs::Anemometer::last_rotations}-->
-   <attribute name="last_rotations" type="uint16_t" visibility="0x02" properties="0x00">
+   <!--${AOs::Anemometer::m_last_rotations}-->
+   <attribute name="m_last_rotations" type="uint16_t" visibility="0x02" properties="0x00">
     <documentation>// number of revolution at last TIMEOUT</documentation>
    </attribute>
    <!--${AOs::Anemometer::instance}-->
    <attribute name="instance" type="Anemometer" visibility="0x00" properties="0x01">
     <documentation>the (static) instance of the class</documentation>
    </attribute>
-   <!--${AOs::Anemometer::rotations}-->
-   <attribute name="rotations" type="volatile uint16_t" visibility="0x00" properties="0x00"/>
-   <!--${AOs::Anemometer::windOffset_deg}-->
-   <attribute name="windOffset_deg" type="int16_t" visibility="0x00" properties="0x00"/>
+   <!--${AOs::Anemometer::m_rotations}-->
+   <attribute name="m_rotations" type="volatile uint16_t" visibility="0x00" properties="0x00"/>
+   <!--${AOs::Anemometer::m_windOffset_deg}-->
+   <attribute name="m_windOffset_deg" type="int16_t" visibility="0x00" properties="0x00"/>
+   <!--${AOs::Anemometer::m_last_millis}-->
+   <attribute name="m_last_millis" type="uint32_t" visibility="0x02" properties="0x00"/>
+   <!--${AOs::Anemometer::m_timeEvt}-->
+   <attribute name="m_timeEvt" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <!--${AOs::Anemometer::m_gustE}-->
+   <attribute name="m_gustE" type="float32_t" visibility="0x02" properties="0x00">
+    <code>= 0.0;</code>
+   </attribute>
+   <!--${AOs::Anemometer::m_gustN}-->
+   <attribute name="m_gustN" type="float32_t" visibility="0x02" properties="0x00">
+    <code>= 0.0;</code>
+   </attribute>
+   <!--${AOs::Anemometer::m_gustCount}-->
+   <attribute name="m_gustCount" type="std::uint8_t" visibility="0x02" properties="0x00">
+    <code>= 0;</code>
+   </attribute>
    <!--${AOs::Anemometer::Anemometer}-->
    <operation name="Anemometer" type="" visibility="0x00" properties="0x00">
-    <code>  : QActive(Q_STATE_CAST(&amp;Anemometer::initial))
+    <code>  : QActive(Q_STATE_CAST(&amp;Anemometer::initial)),
+    m_timeEvt(this, TIMEOUT_SIG, 0U)
 
-last_rotations = 0;
-rotations = 0;
-windOffset_deg = 0;</code>
+m_last_rotations = 0;
+m_rotations = 0;
+m_windOffset_deg = 0;</code>
    </operation>
    <!--${AOs::Anemometer::SM}-->
    <statechart properties="0x00">
@@ -419,9 +436,99 @@ windOffset_deg = 0;</code>
       <action box="0,-2,10,2"/>
      </initial_glyph>
     </initial>
-    <!--${AOs::Anemometer::SM::state1}-->
-    <state name="state1">
-     <state_glyph node="17,15,14,7"/>
+    <!--${AOs::Anemometer::SM::initialising}-->
+    <state name="initialising">
+     <entry brief="arm timer">m_timeEvt.armX(BSP::ONE_SECOND, BSP::ONE_SECOND);
+// cli();
+m_last_rotations = m_rotations;
+m_last_millis = millis();
+// sei();</entry>
+     <!--${AOs::Anemometer::SM::initialising::TIMEOUT}-->
+     <tran trig="TIMEOUT" target="../../2">
+      <tran_glyph conn="17,22,3,1,24,14,-2">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="17,15,14,10">
+      <entry box="1,2,6,2"/>
+     </state_glyph>
+    </state>
+    <!--${AOs::Anemometer::SM::reporting}-->
+    <state name="reporting">
+     <entry>uint16_t revs;
+int period_ms;
+float32_t gustE, gustN;
+
+char str_temp[8];    // buffer for speed string
+
+// cli();
+revs = m_rotations - m_last_rotations;     // compute rotations over period
+m_last_rotations = m_rotations;
+period_ms = millis() - m_last_millis;    // msecs since last run
+m_last_millis = millis();
+// sei();
+
+// compute wind speed in knots
+
+float speed_kts = revs * 1.955196 / (period_ms / 1000.0);
+
+// get the wind directions
+
+int vaneValue = analogRead(WIND_VANE_PIN);
+int direction = map(vaneValue, 0, 1023, 0, 360);
+int calDirection = direction + m_windOffset_deg;
+
+if (calDirection &gt;= 360)
+    calDirection = calDirection - 360;
+
+if (calDirection &lt; 0)
+    calDirection = calDirection + 360;
+
+dtostrf(speed_kts, 4, 2, str_temp);
+
+BSP::displayWind(str_temp, calDirection);
+
+// aggregate gust data
+
+m_gustCount++;
+gustE = speed_kts * sin(radians(calDirection));
+gustN = speed_kts * cos(radians(calDirection));
+
+dtostrf(gustE, 4, 2, str_temp);
+Serial.print(str_temp);
+Serial.print(F(&quot;, &quot;));
+dtostrf(gustN, 4, 2, str_temp);
+Serial.println(str_temp);
+
+m_gustE += gustE;
+m_gustN += gustN;
+
+if (m_gustCount &gt;= 3) {
+
+    // compute average gust components
+
+    gustE = m_gustE / m_gustCount;
+    gustN = m_gustN / m_gustCount;
+
+    BSP::displayGust(gustE, gustN);
+
+    // initialise counters
+    m_gustE = 0.0;
+    m_gustN = 0.0;
+    m_gustCount = 0;
+}
+
+
+</entry>
+     <!--${AOs::Anemometer::SM::reporting::TIMEOUT}-->
+     <tran trig="TIMEOUT" target="..">
+      <tran_glyph conn="19,40,3,2,26,6,-11,-3">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="19,29,20,14">
+      <entry box="1,2,6,2"/>
+     </state_glyph>
     </state>
     <state_diagram size="80,50"/>
    </statechart>
@@ -452,10 +559,27 @@ windOffset_deg = 0;</code>
    <text>#include &quot;qpcpp.hpp&quot;  // QP-C++ framework
 #include &quot;dpp.hpp&quot;    // DPP application
 #include &quot;bsp.hpp&quot;    // Board Support Package
+#include &quot;anemometer.hpp&quot;
 
 using namespace QP;
 
 Q_DEFINE_THIS_FILE
+
+
+
+uint8_t led_on;
+uint32_t last_millis;
+
+//............................................................................
+void ISR_anemometer(void) {
+    // service interrupt caused by rotation of anemometer
+    if ((millis()-last_millis)&gt; 50) {
+        ((Anemometer *) AO_Anemometer)-&gt;m_rotations++;
+        last_millis = millis();
+        led_on = !led_on;
+        digitalWrite(12, led_on);
+     }
+}
 
 //............................................................................
 void setup() {
@@ -490,6 +614,22 @@ void setup() {
     AO_Anemometer-&gt;start((uint_fast8_t)(N_PHILO + 2U), // priority
         anemometerQueueSto, Q_DIM(tableQueueSto),
         (void *)0, 0U);
+
+
+
+//............................................................................
+
+    // Configure the interrupt handler for Anemometer Rotations
+    pinMode(ANEMOMETER_PIN, INPUT);
+    pinMode(12, OUTPUT);
+    led_on = 1;
+    last_millis = millis();
+    digitalWrite(12, led_on);
+    // attachInterrupt(digitalPinToInterrupt(ANEMOMETER_PIN), ISR_anemometer, FALLING);
+    //NVIC_EnableIRQ(digitalPinToInterrupt(ANEMOMETER_PIN));
+    attachInterrupt(ANEMOMETER_PIN, ISR_anemometer, FALLING);
+    Serial.print(&quot;anemometer interrupt enabled on pin &quot;);
+    Serial.println(ANEMOMETER_PIN);
 }
 
 //............................................................................
@@ -513,8 +653,13 @@ void loop() {
 
 class BSP {
 public:
-    enum { TICKS_PER_SEC = 100} ;
+    enum { 
+        TICKS_PER_SEC = 100,
+        ONE_SECOND = TICKS_PER_SEC
+    } ;
     static void init(void);
+    static void displayWind(char * speed_kts, int direction);
+    static void displayGust(float32_t gustE, float32_t gustN);
     static void displayPaused(uint8_t const paused);
     static void displayPhilStat(uint8_t const n, char_t const *stat);
     static void terminate(int16_t const result);
@@ -537,9 +682,9 @@ public:
 #include &quot;dpp.hpp&quot;     // DPP application
 #include &quot;bsp.hpp&quot;     // Board Support Package
 #include &quot;anemometer.hpp&quot;
+#include &lt;avr/dtostrf.h&gt;
 
 using namespace QP;
-
 
 
 //----------------------------------------------------------------------------
@@ -558,8 +703,49 @@ void BSP::init(void) {
 
     randomSeed(1234); // seed the Random Number Generator
 }
+
+//............................................................................
+void BSP::displayWind(char * speed_kts, int direction) {
+    Serial.print(F(&quot;Wind: &quot;));
+    Serial.print(speed_kts);
+    Serial.print(F(&quot; kts, &quot;));
+    Serial.print(direction);
+    Serial.println(F(&quot; degrees&quot;));
+}
+
+void BSP::displayGust(float32_t gustE, float32_t gustN) {
+    char str_temp[8];
+    float32_t direction_deg, speed_kts;
+
+    speed_kts = sqrt((gustE * gustE) + (gustN * gustN));
+    if (gustN == 0.0) {
+        direction_deg = 0.0;
+    } else {
+        direction_deg = 90.0 - degrees(atan2(gustN, gustE));
+        if (direction_deg &lt; 0.0) {
+            direction_deg += 360.0;
+        }
+    }
+
+    Serial.print(F(&quot;Gust: &quot;));
+    dtostrf(speed_kts, 4, 2, str_temp);
+    Serial.print(str_temp);
+    Serial.print(F(&quot; kts from , &quot;));
+
+    dtostrf(direction_deg, 4, 2, str_temp);
+    Serial.print(str_temp);
+    Serial.print(F(&quot; degs, east=&quot;));
+
+    dtostrf(gustE, 4, 2, str_temp);
+    Serial.print(str_temp);
+    Serial.print(F(&quot;, north= &quot;));
+    dtostrf(gustN, 4, 2, str_temp);
+    Serial.println(str_temp);
+}
+
 //............................................................................
 void BSP::displayPhilStat(uint8_t n, char_t const *stat) {
+    return;
     if (stat[0] == 'e') {
         digitalWrite(LED_BUILTIN, HIGH);
     }
@@ -646,11 +832,6 @@ void TIMER_HANDLER(void) {
 
 
 //............................................................................
-void ISR_anemometer(void) {
-    // service interrupt caused by rotation of anemometer
-    ((Anemometer *) AO_Anemometer)-&gt;rotations++;
-}
-//............................................................................
 void QF::onStartup(void) {
     // configure the timer-counter channel........
     pmc_set_writeprotect(false);   // disable write protection
@@ -676,11 +857,6 @@ void QF::onStartup(void) {
     NVIC_EnableIRQ(TIMER_IRQn);
     // ...
 
-//............................................................................
-
-    // Configure the interrupt handler for Anemometer Rotations
-    pinMode(ANEMOMETER_PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(ANEMOMETER_PIN), ISR_anemometer, FALLING);
 }
 
 
@@ -815,10 +991,12 @@ $define${AOs::Table}
   </file>
   <!--${./weather_statio~::anemometer.cpp}-->
   <file name="anemometer.cpp">
-   <text>#include &quot;qpcpp.hpp&quot;   // QP-C++ framework
+   <text>#include &quot;arduino.h&quot;
+#include &quot;qpcpp.hpp&quot;   // QP-C++ framework
 #include &quot;dpp.hpp&quot;     // DPP application
 #include &quot;bsp.hpp&quot;     // Board Support Package
 #include &quot;anemometer.hpp&quot;
+#include &lt;avr/dtostrf.h&gt;
 
 Q_DEFINE_THIS_FILE
 
