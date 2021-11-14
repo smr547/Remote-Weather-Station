@@ -37,6 +37,25 @@ This structure of the code is recommended for applications with multiple active 
    <!--${Events::TableEvt::philoNum}-->
    <attribute name="philoNum" type="uint8_t" visibility="0x00" properties="0x00"/>
   </class>
+  <!--${Events::WindGustEvt}-->
+  <class name="WindGustEvt" superclass="qpcpp::QEvt">
+   <documentation>Published by the Anemometer every 3 seconds 
+Subscribed to by instance(s) of WindPerodicReport(s)</documentation>
+   <!--${Events::WindGustEvt::speed_kts}-->
+   <attribute name="speed_kts" type="float32_t" visibility="0x00" properties="0x00">
+    <documentation>the average speed in knots measured over the past 3 seconds</documentation>
+   </attribute>
+   <!--${Events::WindGustEvt::eGust_kts}-->
+   <attribute name="eGust_kts" type="float32_t" visibility="0x00" properties="0x00">
+    <documentation>the easterly component of the wind gust vector measured in knots</documentation>
+   </attribute>
+   <!--${Events::WindGustEvt::nGust_kts}-->
+   <attribute name="nGust_kts" type="float32_t" visibility="0x00" properties="0x00">
+    <documentation>the northerly component of the wind gust vector measured in knots</documentation>
+   </attribute>
+  </class>
+  <!--${Events::ReportEvt}-->
+  <class name="ReportEvt" superclass="qpcpp::QEvt"/>
  </package>
  <!--${AOs}-->
  <package name="AOs" stereotype="0x02">
@@ -533,6 +552,105 @@ if (m_gustCount &gt;= 3) {
     <state_diagram size="80,50"/>
    </statechart>
   </class>
+  <!--${AOs::WindPeriodicReporter}-->
+  <class name="WindPeriodicReporter" superclass="qpcpp::QActive">
+   <documentation>Monitors  WindGustEvt s over a specified period and produces reports
+for the period</documentation>
+   <!--${AOs::WindPeriodicRepo~::m_periodEventMax}-->
+   <attribute name="m_periodEventMax" type="uint16_t" visibility="0x02" properties="0x00">
+    <documentation>the number of event received before the reporter will report</documentation>
+   </attribute>
+   <!--${AOs::WindPeriodicRepo~::m_eventCount}-->
+   <attribute name="m_eventCount" type="uint16_t" visibility="0x02" properties="0x00">
+    <documentation>event count for this cycle
+</documentation>
+   </attribute>
+   <!--${AOs::WindPeriodicRepo~::m_eGustSum_kts}-->
+   <attribute name="m_eGustSum_kts" type="float32_t" visibility="0x02" properties="0x00">
+    <documentation>the sum of the easterly components of all WindGustEvt s received</documentation>
+   </attribute>
+   <!--${AOs::WindPeriodicRepo~::m_nGustSum_kts}-->
+   <attribute name="m_nGustSum_kts" type="float32_t" visibility="0x02" properties="0x00">
+    <documentation>the sum of the northerly components of all WindGustEvt s received</documentation>
+   </attribute>
+   <!--${AOs::WindPeriodicRepo~::instance[N_WIND_REPORTERS]}-->
+   <attribute name="instance[N_WIND_REPORTERS]" type="WindPeriodicReporter" visibility="0x00" properties="0x01"/>
+   <!--${AOs::WindPeriodicRepo~::WindPeriodicReporter}-->
+   <operation name="WindPeriodicReporter" type="" visibility="0x00" properties="0x00">
+    <code>  : QActive(Q_STATE_CAST(&amp;WindPeriodicReporter::initial))</code>
+   </operation>
+   <!--${AOs::WindPeriodicRepo~::reset}-->
+   <operation name="reset" type="void" visibility="0x00" properties="0x00">
+    <documentation>reset the accumulators</documentation>
+    <code>m_eventCount = 0;
+m_eGustSum_kts = 0.0;
+m_nGustSum_kts = 0.0;</code>
+   </operation>
+   <!--${AOs::WindPeriodicRepo~::setMaxEvents}-->
+   <operation name="setMaxEvents" type="void" visibility="0x00" properties="0x00">
+    <!--${AOs::WindPeriodicRepo~::setMaxEvents::maxEvents}-->
+    <parameter name="maxEvents" type="uint8_t"/>
+    <code>m_periodEventMax = maxEvents;</code>
+   </operation>
+   <!--${AOs::WindPeriodicRepo~::SM}-->
+   <statechart properties="0x00">
+    <!--${AOs::WindPeriodicRepo~::SM::initial}-->
+    <initial target="../1">
+     <action brief="subscribe to gusts">subscribe(GUST_SIG);</action>
+     <initial_glyph conn="19,5,5,1,38,6,-10">
+      <action box="0,-2,16,2"/>
+     </initial_glyph>
+    </initial>
+    <!--${AOs::WindPeriodicRepo~::SM::processing}-->
+    <state name="processing">
+     <entry brief="reset">this-&gt;reset();</entry>
+     <!--${AOs::WindPeriodicRepo~::SM::processing::initial}-->
+     <initial target="../2">
+      <initial_glyph conn="44,14,5,0,-6,11">
+       <action box="0,-2,10,2"/>
+      </initial_glyph>
+     </initial>
+     <!--${AOs::WindPeriodicRepo~::SM::processing::GUST}-->
+     <tran trig="GUST">
+      <action brief="accumulate">m_eventCount++;
+m_eGustSum_kts += Q_EVT_CAST(WindGustEvt)-&gt;eGust_kts;
+m_nGustSum_kts += Q_EVT_CAST(WindGustEvt)-&gt;nGust_kts;
+
+// post REPORT to self if we've accumulated enough data
+
+if (m_eventCount &gt;= m_periodEventMax) {
+    // post REPRT to self
+    ReportEvt *re = Q_NEW(ReportEvt, REPORT_SIG);
+    this-&gt;POST(re, this);
+}</action>
+      <tran_glyph conn="12,17,3,-1,12">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <!--${AOs::WindPeriodicRepo~::SM::processing::reporting}-->
+     <state name="reporting">
+      <!--${AOs::WindPeriodicRepo~::SM::processing::reporting::REPORT}-->
+      <tran trig="REPORT">
+       <action brief="report and reset">Serial.print(F(&quot;WindPeriodicReporter &quot;));
+Serial.print(m_periodEventMax);
+Serial.println(F(&quot; reporting&quot;));
+
+// reset counters
+
+this-&gt;reset();</action>
+       <tran_glyph conn="16,32,3,-1,17">
+        <action box="0,-2,21,2"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="16,25,27,9"/>
+     </state>
+     <state_glyph node="12,8,35,29">
+      <entry box="1,2,12,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
   <!--${AOs::AO_Philo[N_PHILO]}-->
   <attribute name="AO_Philo[N_PHILO]" type="QP::QActive * const" visibility="0x00" properties="0x00">
    <code>= { // &quot;opaque&quot; pointers to Philo AO
@@ -550,6 +668,15 @@ if (m_gustCount &gt;= 3) {
   <!--${AOs::AO_Anemometer}-->
   <attribute name="AO_Anemometer" type="QP::QActive * const" visibility="0x00" properties="0x00">
    <code>= &amp;Anemometer::instance; // &quot;opaque&quot; AO pointer</code>
+  </attribute>
+  <!--${AOs::AO_WindPeriodicReporter[N_WIND_R~}-->
+  <attribute name="AO_WindPeriodicReporter[N_WIND_REPORTERS]" type="QP::QActive * const" visibility="0x00" properties="0x00">
+   <code>= { // &quot;opaque&quot; pointers to WindPeriodicReporters
+    &amp;WindPeriodicReporter::instance[0],
+    &amp;WindPeriodicReporter::instance[1],
+    &amp;WindPeriodicReporter::instance[2],
+    &amp;WindPeriodicReporter::instance[3]
+};</code>
   </attribute>
  </package>
  <!--${./weather_station}-->
@@ -614,6 +741,14 @@ void setup() {
     AO_Anemometer-&gt;start((uint_fast8_t)(N_PHILO + 2U), // priority
         anemometerQueueSto, Q_DIM(tableQueueSto),
         (void *)0, 0U);
+
+    // start WindPeriodicReporters
+    WindPeriodicReporter::instance[0].setMaxEvents(20);    // one minute reports
+    WindPeriodicReporter::instance[1].setMaxEvents(300);   // 15 minute reports
+    WindPeriodicReporter::instance[2].setMaxEvents(600);   // 30 minute reports
+    WindPeriodicReporter::instance[3].setMaxEvents(1200);  // 60 minute reports
+
+    // TODO -- set up event queues for Reporters and start each one
 
 
 
@@ -898,6 +1033,8 @@ enum Signals {
     PAUSE_SIG,      // published by BSP to pause the application
     SERVE_SIG,      // published by BSP to serve re-start serving forks
     TEST_SIG,       // published by BSP to test the application
+    GUST_SIG,       // published by the Anemometer to allow WindPeriodicReports to accumulate wind data
+    REPORT_SIG,     // pubilshed by WindPeriodicReprt to self
     MAX_PUB_SIG,    // the last published signal
 
     TIMEOUT_SIG,    // timeout used by Time Events
@@ -909,12 +1046,16 @@ enum Signals {
 $declare${Events}
 
 // number of philosophers
-enum { N_PHILO = 5 };
+enum { 
+    N_PHILO = 5,
+    N_WIND_REPORTERS = 4
+    };
 
 // generate declarations of all opaque pointers...
 $declare(AOs::AO_Philo[N_PHILO])
 $declare(AOs::AO_Table)
 $declare(AOs::AO_Anemometer)
+$declare(AOs::AO_WindPeriodicReporter[N_WIND_REPORTERS])
 
 #endif // DPP_HPP
 </text>
@@ -1015,9 +1156,27 @@ $define${AOs::Anemometer}</text>
 #define ANEMOMETER_HPP
 
 $declare(AOs::Anemometer)
+$declare(AOs::WindPeriodicReporter)
 
 #endif // ANEMOMETER_HPP
 </text>
+  </file>
+  <!--${./weather_statio~::wpr.cpp}-->
+  <file name="wpr.cpp">
+   <text>#include &quot;qpcpp.hpp&quot;   // QP-C++ framework
+#include &quot;dpp.hpp&quot;     // DPP application
+#include &quot;bsp.hpp&quot;     // Board Support Package
+#include &quot;anemometer.hpp&quot;
+
+Q_DEFINE_THIS_FILE
+
+
+
+// generate definition of the opaque pointer to the AO -----------------------
+$define${AOs::AO_WindPeriodicReporter[N_WIND_REPORTERS]}
+
+// generate definition of the AO ---------------------------------------------
+$define${AOs::WindPeriodicReporter}</text>
   </file>
  </directory>
 </model>
