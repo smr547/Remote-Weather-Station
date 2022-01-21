@@ -137,12 +137,12 @@ ReactESP app([]() {
 
   // Wind speed. 1Hz is 1.026m/s.
   {
-    uint8_t pin = 39;
+    uint8_t pin = 27;
     uint read_interval_ms = 3 * 1000 /* read every 3s */;
     uint ignore_interval_ms = 5 /* 200 counts/s, or 205m/s of wind */;
 
     auto *sensor = new DigitalInputDebounceCounter(
-        pin, INPUT_PULLUP, RISING, read_interval_ms, ignore_interval_ms);
+        pin, INPUT_PULLUP, FALLING, read_interval_ms, ignore_interval_ms);
     sensor->connect_to(new Frequency(1.026, "/Outside/Windspeed/calibrate"))
         ->connect_to(new SKOutputNumber("environment.wind.speedApparent"));
   }
