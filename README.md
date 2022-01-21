@@ -79,6 +79,26 @@ The second prototype will be deployed on a remote rural block north of Gundaroo,
 1. [Switch mode DC-DC converter](https://au.element14.com/recom-power/r-78c9-0-1-0/switching-regulator-9v-1a/dp/1903041) (battery voltage to 9V at 1A) to power the electronics 
 1. 3G/4G data communications module [SIM7000](https://www.botletics.com/products/sim7000-shield) 
 
+## Prototype 3
+
+This version of the Weather Station proposes a simplified hardware design and introduces the following changes
+
+1. Use of the [ESP32 Dev module](https://www.makerstore.com.au/product/elec-esp32-dev-mod/) with built in WiFi
+1. Wired 5V power (no solar panels or battery)
+1. Wifi connection to Raspberry Pi for data transfer
+1. Uses the [SensESP](https://github.com/SignalK/SensESP) framework for data collection and transmission to
+1. [SignalK server](https://github.com/SignalK/signalk-server) running on the Raspberry Pi
+1. [Grafana and Influx](https://notenoughtech.com/raspberry-pi/grafana-influxdb/) providing front end data services
+
+We will also restructure the repository to align with other Open Hardware projects (see [Open Hardware Template](https://github.com/mfhepp/open_hardware_template))
+
+To build this version:
+
+```
+cd esp32
+pio run --target upload
+```
+
 ## Intersting links
 * [Wind reporting in the NAS](https://ral.ucar.edu/general/Summer2012/FPAW_2012_Summer_Presentations/Seg%204%20Surface%20Observations%20Riger%20Sultan/Armbruster%20Wind%20Reporting.pdf)
 * [LTE shield instructable](https://www.instructables.com/LTE-NB-IoT-Shield-for-Arduino/)
@@ -90,4 +110,6 @@ The second prototype will be deployed on a remote rural block north of Gundaroo,
 * [SHT1x Arduino Library](https://github.com/practicalarduino/SHT1x)
 * [BOM terms and abbreviations](http://www.bom.gov.au/catalogue/observations/about-weather-observations.shtml) provides definitions for the values we are 
 attempting to record
+
+
 
