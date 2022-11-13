@@ -1,13 +1,18 @@
 #include <Adafruit_AM2315.h>
+#include <Adafruit_BMP280.h>
 #include <Arduino.h>
+#include <sensesp/sensors/analog_input.h>
+#include <sensesp/sensors/digital_input.h>
+#include <sensesp/signalk/signalk_output.h>
+#include <sensesp/transforms/frequency.h>
+#include <sensesp/transforms/linear.h>
+#include <sensesp/transforms/typecast.h>
 #include <sensesp_app.h>
-#include <sensors/analog_input.h>
-#include <sensors/bmp280.h>
-#include <sensors/digital_input.h>
-#include <signalk/signalk_output.h>
-#include <transforms/frequency.h>
-#include <transforms/linear.h>
-#include <transforms/typecast.h>
+#include <sensesp_app_builder.h>
+
+using namespace sensesp;
+
+reactesp::ReactESP app;
 
 namespace {
 class AM2315Value;
@@ -15,7 +20,7 @@ class AM2315Value;
 // Provides a small wrapper around Adafruit_AM2315 sensor support.
 class AM2315 {
  public:
-  AM2315(TwoWire *wire = &Wire) { sensor_ = new Adafruit_AM2315(wire); }
+  explicit AM2315(TwoWire *wire = &Wire) { sensor_ = new Adafruit_AM2315(wire); }
 
   void enable() {
     app.onRepeat(kReadIntervalMs, [this]() {
@@ -31,9 +36,9 @@ class AM2315 {
     });
   }
 
-  float temperature() { return temp_; }
+  float temperature() const { return temp_; }
 
-  float humidity() { return humidity_; }
+  float humidity() const { return humidity_; }
 
  private:
   static const uint kReadIntervalMs = 3000;
@@ -50,51 +55,35 @@ class AM2315 {
 // provided by an AM2315. Due to its design, the physical sensor will never be
 // interrogated more than every 2.5 seconds or so, no matter what the user
 // provides for read_delay_ms.
-class AM2315Value : public NumericSensor {
- public:
+class AM2315Value : public RepeatSensor<float> {
+public:
   enum SensorType { temperature, humidity };
 
-  AM2315Value(AM2315 *sensor, SensorType type, uint read_delay_ms,
-              String config_path = "")
-      : NumericSensor(std::move(config_path)),
-        sensor_{sensor},
-        type_{type},
-        read_delay_ms_{read_delay_ms} {}
-
-  void enable() override {
-    app.onRepeat(read_delay_ms_, [this]() {
-      if (sensor_->valid_) {
-        output = type_ == SensorType::temperature ? sensor_->temperature()
-                                                  : sensor_->humidity();
-        notify();
-      }
-    });
-  }
-
- private:
-  AM2315 *sensor_;
-  SensorType type_;
-  uint read_delay_ms_;
+  AM2315Value(AM2315 *sensor, SensorType type, uint read_delay_ms)
+      : RepeatSensor(read_delay_ms, [sensor, type]() {
+          return type == SensorType::temperature ? sensor->temperature()
+                                                 : sensor->humidity();
+        }) {}
 };
 }  // namespace
 
-ReactESP app([]() {
+void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
   SetupSerialDebug(115200);
 #endif
-
-  sensesp_app = new SensESPApp();
+  SensESPAppBuilder builder;
+  sensesp_app = builder.get_app();
 
   {
     static const uint kReadDelayMillis = 5000;
 
     // Create a BMP280 for pressure.
-    auto *bmp280 = new BMP280(0x76);
+    auto *bmp280 = new Adafruit_BMP280(0x76);
 
-    auto *pressure =
-        new BMP280Value(bmp280, BMP280Value::pressure, kReadDelayMillis);
+    auto *pressure = new RepeatSensor<float>(
+        kReadDelayMillis, [bmp280]() { return bmp280->readPressure(); });
     pressure->connect_to(new Linear(1.0, 0.0, "/sensors/pressure/calibrate"))
-        ->connect_to(new SKOutputNumber("environment.outside.pressure"));
+        ->connect_to(new SKOutputFloat("environment.outside.pressure"));
   }
 
   {
@@ -107,12 +96,12 @@ ReactESP app([]() {
     auto *temp =
         new AM2315Value(am2315, AM2315Value::temperature, kReadDelayMillis);
     temp->connect_to(new Linear(1.0, 0.0, "/sensors/temperature/calibrate"))
-        ->connect_to(new SKOutputNumber("environment.outside.temperature"));
+        ->connect_to(new SKOutputFloat("environment.outside.temperature"));
 
     auto *humid =
         new AM2315Value(am2315, AM2315Value::humidity, kReadDelayMillis);
     humid->connect_to(new Linear(1.0, 0.0, "/sensors/humidity/calibrate"))
-        ->connect_to(new SKOutputNumber("environment.outside.humidity"));
+        ->connect_to(new SKOutputFloat("environment.outside.humidity"));
   }
 
   // Wind direction comes to us via ADC. A count of zero implies due north,
@@ -132,7 +121,7 @@ ReactESP app([]() {
               return inRadians < PI ? inRadians : (inRadians - 2 * PI);
             },
             "" /* no config */))
-        ->connect_to(new SKOutputNumber("environment.wind.angleApparent"));
+        ->connect_to(new SKOutputFloat("environment.wind.angleApparent"));
   }
 
   // Wind speed. 1Hz is 1.026m/s.
@@ -144,7 +133,7 @@ ReactESP app([]() {
     auto *sensor = new DigitalInputDebounceCounter(
         pin, INPUT_PULLUP, FALLING, read_interval_ms, ignore_interval_ms);
     sensor->connect_to(new Frequency(1.026, "/Outside/Windspeed/calibrate"))
-        ->connect_to(new SKOutputNumber("environment.wind.speedApparent"));
+        ->connect_to(new SKOutputFloat("environment.wind.speedApparent"));
   }
 
   // Rain sensor. Report count every 5 minutes.
@@ -165,8 +154,12 @@ ReactESP app([]() {
     sensor->connect_to(new Typecast<int, float>())
         ->connect_to(new Linear(multiplier, 0.0, "/Outside/Rain/calibrate"))
         ->connect_to(
-            new SKOutputNumber("environment.rain.volume5min", rain_meta));
+            new SKOutputFloat("environment.rain.volume5min", rain_meta));
   }
 
-  sensesp_app->enable();
-});
+  sensesp_app->start();
+}
+
+void loop() {
+  app.tick();
+}
