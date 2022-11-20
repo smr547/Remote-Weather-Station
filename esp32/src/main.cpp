@@ -11,7 +11,7 @@
 #include <sensesp/transforms/typecast.h>
 #include <sensesp_app.h>
 #include <sensesp_app_builder.h>
-#undef SERIAL_DEBUG_DISABLED
+#define SERIAL_DEBUG_DISABLED 1
 
 using namespace sensesp;
 
@@ -129,21 +129,21 @@ void setup() {
   // with negative values being wind from port.
  
 
-  // {
-  //   uint8_t pin = 36 /* ADC 0 */;
-  //   uint read_interval_ms = 3 * 1000 /* read every 3s */;
+  {
+    uint8_t pin = 36 /* ADC 0 */;
+    uint read_interval_ms = 3 * 1000 /* read every 3s */;
 
-  //   auto *sensor = new AnalogInput(pin, read_interval_ms, "", 2 * PI);
-  //   sensor
-  //       ->connect_to(new LambdaTransform<float, float>(
-  //           [](float inRadians) {
-  //             // Convert from true wind direction to apparent wind direction
-  //             // with the boat heading true north.
-  //             return inRadians < PI ? inRadians : (inRadians - 2 * PI);
-  //           },
-  //           "" /* no config */))
-  //       ->connect_to(new SKOutputFloat("environment.wind.angleApparent"));
-  // }
+    auto *sensor = new AnalogInput(pin, read_interval_ms, "", 2 * PI);
+    sensor
+        ->connect_to(new LambdaTransform<float, float>(
+            [](float inRadians) {
+              // Convert from true wind direction to apparent wind direction
+              // with the boat heading true north.
+              return inRadians < PI ? inRadians : (inRadians - 2 * PI);
+            },
+            "" /* no config */))
+        ->connect_to(new SKOutputFloat("environment.wind.angleApparent"));
+  }
  
 
   // Wind speed. 1Hz is 1.026m/s.
