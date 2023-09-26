@@ -92,6 +92,8 @@ This version of the Weather Station proposes a simplified hardware design and in
 
 We will also restructure the repository to align with other Open Hardware projects (see [Open Hardware Template](https://github.com/mfhepp/open_hardware_template))
 
+![Current circuit board](https://github.com/smr547/Remote-Weather-Station/assets/4327895/841fade1-f0fe-4d93-a87b-080d893745bc)
+
 To build this version:
 
 ```
