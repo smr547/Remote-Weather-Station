@@ -112,6 +112,7 @@ pio run --target upload
 * [SHT1x Arduino Library](https://github.com/practicalarduino/SHT1x)
 * [BOM terms and abbreviations](http://www.bom.gov.au/catalogue/observations/about-weather-observations.shtml) provides definitions for the values we are 
 attempting to record
+* [Pinout and other anenometer details](https://www.wxforum.net/wxtech/Anemometer-Vane.htm)
 * [Solar Panel 3.3V power supply](https://randomnerdtutorials.com/power-esp32-esp8266-solar-panels-battery-level-monitoring/)
 
 
